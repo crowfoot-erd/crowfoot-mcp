@@ -81,7 +81,7 @@ public final class Inputs {
             @JsonProperty @JsonPropertyDescription("ONE_TO_MANY(기본) 또는 ONE_TO_ONE. N:M은 연결 테이블과 1:N 두 개로 표현한다") String type,
             @JsonProperty @JsonPropertyDescription("식별 관계 여부 — true면 외래 키가 자식의 기본 키에 들어간다. 기본 false") Boolean identifying,
             @JsonProperty @JsonPropertyDescription("부모 쪽 기수: EXACTLY_ONE(외래 키 NOT NULL, 기본) 또는 ZERO_OR_ONE(외래 키 NULL 허용)") String parentMultiplicity,
-            @JsonProperty @JsonPropertyDescription("자식 쪽 기수: 1:N은 ZERO_OR_MORE(기본)·ONE_OR_MORE, 1:1은 ZERO_OR_ONE(기본)·EXACTLY_ONE") String childMultiplicity,
+            @JsonProperty @JsonPropertyDescription("자식 쪽 기수: 1:N은 ONE_OR_MORE(기본)·ZERO_OR_MORE, 1:1은 EXACTLY_ONE(기본)·ZERO_OR_ONE. 특별한 이유가 없으면 생략한다") String childMultiplicity,
             @JsonProperty @JsonPropertyDescription("NO_ACTION(기본), RESTRICT, CASCADE, SET_NULL, SET_DEFAULT") String onDelete,
             @JsonProperty @JsonPropertyDescription("NO_ACTION(기본), RESTRICT, CASCADE, SET_NULL, SET_DEFAULT") String onUpdate,
             @JsonProperty @JsonPropertyDescription("자식의 기존 컬럼을 외래 키로 쓸 때만. 생략하면 외래 키 컬럼을 새로 만든다") List<ColumnMappingInput> columnMappings) {
