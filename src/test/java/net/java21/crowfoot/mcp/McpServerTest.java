@@ -69,6 +69,8 @@ class McpServerTest {
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("crowfoot.mcp.core-base-url", () -> "http://127.0.0.1:" + core.getAddress().getPort());
         registry.add("crowfoot.mcp.web-base-url", () -> "https://crowfoot.example");
+        // DB 매니저도 같은 가짜 서버가 답한다 — 경로(/database-manager/…)로 가른다
+        registry.add("crowfoot.mcp.database-manager-base-url", () -> "http://127.0.0.1:" + core.getAddress().getPort());
     }
 
     @BeforeEach
@@ -139,7 +141,7 @@ class McpServerTest {
     }
 
     @Test
-    void 도구는_18개이고_지우거나_실행하는_도구만_파괴적으로_표시한다() throws Exception {
+    void 도구는_20개이고_지우거나_실행하는_도구만_파괴적으로_표시한다() throws Exception {
         JsonNode tools = JSON.readTree(rpc("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", true).body()).path("result").path("tools");
 
         List<String> names = new ArrayList<>();
@@ -154,7 +156,8 @@ class McpServerTest {
         }
         assertThat(names).containsExactlyInAnyOrder("get_workspace", "list_documents", "get_document", "get_design_context",
                 "validate_document", "export_ddl", "create_document", "import_ddl", "save_requirements", "apply_schema", "remove_objects",
-                "list_databases", "issue_database", "list_connections", "plan_deployment", "deploy_document", "plan_migration", "apply_migration");
+                "list_databases", "issue_database", "list_connections", "plan_deployment", "deploy_document", "plan_migration", "apply_migration",
+                "plan_sample_data", "insert_sample_data");
         assertThat(destructive).containsExactlyInAnyOrder("remove_objects", "deploy_document", "apply_migration");
     }
 
@@ -304,5 +307,75 @@ class McpServerTest {
                 "{\"documentId\":\"501\",\"planFingerprint\":\"" + fingerprint(sql) + "\",\"documentVersion\":9}"));
         assertThat(result.path("executed").asBoolean()).isFalse();
         assertThat(calls()).noneMatch(call -> call.startsWith("POST"));
+    }
+
+    /* ---------- 샘플 데이터 ---------- */
+
+    private static final String SAMPLE_TABLES =
+            "[{\"name\":\"users\",\"rows\":[{\"id\":1,\"email\":\"kim@example.com\"},{\"id\":2,\"email\":\"lee@example.com\"}]},"
+                    + "{\"name\":\"orders\",\"rows\":[{\"users_id\":1,\"status\":\"PAID\"}]}]";
+    private static final String SAMPLE_PATH = "POST /database-manager/workspaces/77/connections/901/sample-data";
+
+    private void stubSample(boolean allowed) {
+        stubMigration("", "[]", allowed);
+        stub(SAMPLE_PATH, 200, ok("{\"dryRun\":true,\"inserted\":3,\"tables\":[{\"name\":\"users\",\"inserted\":2},{\"name\":\"orders\",\"inserted\":1}],\"elapsedMs\":12}"));
+    }
+
+    private static Received sampleCall() {
+        return received.stream().filter(r -> r.path().endsWith("/sample-data")).reduce((first, second) -> second).orElseThrow();
+    }
+
+    @Test
+    void 샘플_데이터는_먼저_넣어_보고_같은_데이터일_때만_실제로_넣는다() throws Exception {
+        stubSample(true);
+
+        JsonNode plan = text(call("plan_sample_data", "{\"documentId\":\"501\",\"tables\":" + SAMPLE_TABLES + "}"));
+        assertThat(plan.path("inserted").asInt()).isEqualTo(3);
+        assertThat(plan.path("target").path("connectionId").asString()).isEqualTo("901");
+        String fingerprint = plan.path("planFingerprint").asString();
+        assertThat(fingerprint).hasSize(64);
+        // 넣어 보기는 dryRun으로, 호출자의 헤더를 그대로 붙여 DB 매니저를 부른다
+        JsonNode dryBody = JSON.readTree(sampleCall().body());
+        assertThat(dryBody.path("dryRun").asBoolean()).isTrue();
+        assertThat(dryBody.path("tables").get(0).path("rows").get(0).path("email").asString()).isEqualTo("kim@example.com");
+        assertThat(sampleCall().headers()).containsEntry("x-user-id", "2").containsEntry("x-token-workspace-id", "77");
+
+        // 데이터가 달라지면 실행하지 않는다
+        received.clear();
+        JsonNode refused = text(call("insert_sample_data",
+                "{\"documentId\":\"501\",\"tables\":[{\"name\":\"users\",\"rows\":[{\"id\":9}]}],\"planFingerprint\":\"" + fingerprint + "\"}"));
+        assertThat(refused.path("executed").asBoolean()).isFalse();
+        assertThat(calls()).noneMatch(call -> call.contains("sample-data"));
+
+        // 같은 데이터면 실제로 넣고 문서 주소를 돌려준다
+        JsonNode done = text(call("insert_sample_data",
+                "{\"documentId\":\"501\",\"tables\":" + SAMPLE_TABLES + ",\"planFingerprint\":\"" + fingerprint + "\"}"));
+        assertThat(done.path("executed").asBoolean()).isTrue();
+        assertThat(JSON.readTree(sampleCall().body()).path("dryRun").asBoolean()).isFalse();
+        assertThat(done.path("url").asString()).isEqualTo("https://crowfoot.example/workspaces/77/models/501");
+    }
+
+    @Test
+    void 샘플_데이터는_MCP_반영을_허용하지_않은_커넥션에는_넣어_보지도_않는다() throws Exception {
+        stubSample(false);
+
+        JsonNode result = call("plan_sample_data", "{\"documentId\":\"501\",\"tables\":" + SAMPLE_TABLES + "}");
+
+        assertThat(result.path("isError").asBoolean()).isTrue();
+        assertThat(result.path("content").get(0).path("text").asString()).contains("MCP 반영");
+        assertThat(calls()).noneMatch(call -> call.contains("sample-data"));
+    }
+
+    @Test
+    void 샘플_데이터가_제약을_어기면_어느_행인지_알려_준다() throws Exception {
+        stubSample(true);
+        stub(SAMPLE_PATH, 409, "{\"header\":{\"isSuccessful\":false,\"resultCode\":\"ROW_CHANGE_FAILED\",\"resultMessage\":\"변경을 적용하지 못했습니다\"},"
+                + "\"errors\":[{\"field\":\"tables[1].rows[0]\",\"code\":\"ROW_CHANGE_FAILED\",\"message\":\"foreign key constraint fails\"}]}");
+
+        JsonNode result = call("plan_sample_data", "{\"documentId\":\"501\",\"tables\":" + SAMPLE_TABLES + "}");
+
+        assertThat(result.path("isError").asBoolean()).isTrue();
+        assertThat(result.path("content").get(0).path("text").asString())
+                .contains("ROW_CHANGE_FAILED").contains("tables[1].rows[0]").contains("foreign key constraint fails");
     }
 }

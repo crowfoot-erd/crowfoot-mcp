@@ -4,6 +4,7 @@ crowfoot:
     # k8s Service가 80으로 서빙하므로 포트 불필요 — 컨테이너 실제 포트만 8080
     core-base-url: ${CROWFOOT_CORE_URI:http://crowfoot-core-api}
     web-base-url: ${CROWFOOT_WEB_URL:https://crowfoot.java21.net}
+    database-manager-base-url: ${CROWFOOT_DATABASE_MANAGER_URI:http://crowfoot-database-manager}
 logging:
   level:
     net.java21.crowfoot.mcp: INFO

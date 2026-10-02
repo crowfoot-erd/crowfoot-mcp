@@ -25,6 +25,7 @@ public class CoreClient {
     private final RestClient rest;
     private final JsonMapper json;
     private final String baseUrl;
+    private final String databaseManagerBaseUrl;
 
     public CoreClient(McpProperties properties, JsonMapper json) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
@@ -34,6 +35,7 @@ public class CoreClient {
         this.rest = RestClient.builder().requestFactory(factory).build();
         this.json = json;
         this.baseUrl = properties.coreBaseUrl();
+        this.databaseManagerBaseUrl = properties.databaseManagerBaseUrl();
     }
 
     /** GET — 응답 본문 전체(header·response·responses…)를 돌려준다 */
@@ -50,8 +52,20 @@ public class CoreClient {
         return exchange(caller, HttpMethod.POST, path, Map.of(), body);
     }
 
+    /**
+     * DB 매니저 POST — 같은 헤더를 붙여 DB 매니저의 구현 경로(/database-manager/…)를 부른다.
+     * 토큰으로 온 요청이 부를 수 있는 것은 샘플 데이터 넣기뿐이다(09-database-manager/00-data-browser.md Section 3.8).
+     */
+    public JsonNode postToDatabaseManager(Caller caller, String path, Object body) {
+        return exchange(databaseManagerBaseUrl, caller, HttpMethod.POST, path, Map.of(), body);
+    }
+
     private JsonNode exchange(Caller caller, HttpMethod method, String path, Map<String, ?> query, Object body) {
-        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(baseUrl + path);
+        return exchange(baseUrl, caller, method, path, query, body);
+    }
+
+    private JsonNode exchange(String base, Caller caller, HttpMethod method, String path, Map<String, ?> query, Object body) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(base + path);
         query.forEach((name, value) -> {
             if (value != null && !String.valueOf(value).isBlank()) {
                 builder.queryParam(name, value);

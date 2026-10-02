@@ -5,10 +5,12 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import net.java21.crowfoot.mcp.auth.Caller;
 import net.java21.crowfoot.mcp.core.CoreException;
+import net.java21.crowfoot.mcp.tool.input.Inputs.SampleTable;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Component;
@@ -191,10 +193,81 @@ public class DatabaseTools {
         return support.text(out);
     }
 
+    @McpTool(name = "plan_sample_data", title = "샘플 데이터 미리 넣어 보기",
+            description = "문서가 연결된 데이터베이스에 샘플 데이터를 넣어 본다. 실제로 넣은 뒤 전부 되돌리므로 남는 행이 없다. "
+                    + "제약 위반(외래 키, 유니크, NOT NULL)과 타입 오류를 미리 볼 수 있다. 테이블별 건수와 planFingerprint를 돌려준다. "
+                    + "get_document로 테이블과 컬럼을 확인하고 그 구조에 맞는 값을 만든다. 부모 테이블을 자식보다 먼저 적는다. "
+                    + "자식의 외래 키 값이 부모 행의 키와 맞아야 하므로 부모의 키 값을 직접 정해 넣는 편이 안전하다. 한 번에 테이블 20개, 행 1,000개까지다. "
+                    + "결과와 넣을 데이터의 요약을 사용자에게 보여 주고 승인을 받은 뒤 insert_sample_data를 부른다.",
+            annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = true))
+    public String planSampleData(McpTransportContext context,
+            @McpToolParam(description = "문서 ID") String documentId,
+            @McpToolParam(description = "테이블과 행. 부모 테이블을 먼저 적는다") List<SampleTable> tables) {
+        Caller caller = support.caller(context);
+        ObjectNode target = sampleTarget(caller, documentId);
+        ObjectNode out = sampleData(caller, target, tables, true);
+        out.put("planFingerprint", fingerprint(tables));
+        out.put("next", "넣을 테이블과 행 수, 대상 데이터베이스를 사용자에게 보여 주고 승인을 받는다. 승인하면 같은 tables와 이 planFingerprint로 insert_sample_data를 부른다.");
+        return support.text(out);
+    }
+
+    @McpTool(name = "insert_sample_data", title = "샘플 데이터 넣기",
+            description = "plan_sample_data로 넣어 본 샘플 데이터를 데이터베이스에 실제로 넣는다. 되돌릴 수 없다. 사용자가 승인한 뒤에만 부른다. "
+                    + "tables는 plan_sample_data에 넣은 것과 같아야 하고, planFingerprint는 plan_sample_data가 돌려준 값이다 — 데이터가 다르면 실행하지 않는다. "
+                    + "넣기만 한다. 고치기와 지우기는 제공하지 않는다. 하나라도 실패하면 전부 되돌린다.",
+            annotations = @McpTool.McpAnnotations(readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = true))
+    public String insertSampleData(McpTransportContext context,
+            @McpToolParam(description = "문서 ID") String documentId,
+            @McpToolParam(description = "테이블과 행 — plan_sample_data에 넣은 것과 같아야 한다") List<SampleTable> tables,
+            @McpToolParam(description = "plan_sample_data가 돌려준 planFingerprint") String planFingerprint) {
+        Caller caller = support.caller(context);
+        if (planFingerprint == null || !planFingerprint.equals(fingerprint(tables))) {
+            return notExecuted("넣으려는 데이터가 미리 넣어 본 데이터와 다르다. plan_sample_data를 다시 불러 결과를 사용자에게 보여 주고 승인받는다.");
+        }
+        ObjectNode target = sampleTarget(caller, documentId);
+        ObjectNode out = sampleData(caller, target, tables, false);
+        out.put("executed", true);
+        out.put("url", support.documentUrl(caller, documentId));
+        out.put("next", "넣은 테이블과 행 수를 사용자에게 알린다. 데이터는 Crowfoot의 데이터 브라우저(문서의 '데이터 보기')에서 볼 수 있다.");
+        return support.text(out);
+    }
+
     /* ---------- 내부 ---------- */
 
     private JsonNode outline(Caller caller, String documentId) {
         return support.core().get(caller, support.modelPath(caller, documentId, "/outline")).path("response");
+    }
+
+    /** 샘플 데이터의 대상 — 문서가 연결된 커넥션. MCP 반영을 허용한 커넥션이어야 한다 */
+    private ObjectNode sampleTarget(Caller caller, String documentId) {
+        JsonNode source = outline(caller, documentId).path("sourceConnectionId");
+        if (source.isNull() || source.isMissingNode() || source.asString("").isEmpty()) {
+            throw new IllegalStateException("이 문서는 데이터베이스에 연결돼 있지 않다. 먼저 plan_deployment와 deploy_document로 배포한다.");
+        }
+        ObjectNode target = connectionSummary(findConnection(caller, source.asString()));
+        if (!target.path("mcpApplyAllowed").asBoolean(false)) {
+            throw new IllegalStateException(NOT_ALLOWED);
+        }
+        return target;
+    }
+
+    private ObjectNode sampleData(Caller caller, ObjectNode target, List<SampleTable> tables, boolean dryRun) {
+        if (tables == null || tables.isEmpty()) {
+            throw new IllegalArgumentException("tables에 테이블을 하나 이상 넣는다.");
+        }
+        ObjectNode body = support.object();
+        body.put("dryRun", dryRun);
+        body.set("tables", support.tree(tables));
+        String path = "/database-manager/workspaces/" + caller.workspaceId() + "/connections/"
+                + support.id("connectionId", target.path("connectionId").asString()) + "/sample-data";
+        ObjectNode out = (ObjectNode) support.core().postToDatabaseManager(caller, path, body).path("response").deepCopy();
+        out.set("target", target);
+        return out;
+    }
+
+    /** 샘플 데이터의 지문 — tables 입력을 JSON으로 적은 문자열의 SHA-256. 미리 넣어 본 데이터와 같은지 견준다 */
+    private String fingerprint(List<SampleTable> tables) {
+        return sha256(support.tree(tables).toString());
     }
 
     private ObjectNode migrationPlan(Caller caller, String documentId) {

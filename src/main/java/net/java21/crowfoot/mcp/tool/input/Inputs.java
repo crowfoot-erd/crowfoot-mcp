@@ -110,4 +110,10 @@ public final class Inputs {
             @JsonProperty(required = true) @JsonPropertyDescription("부모 테이블 물리명") String parent,
             @JsonProperty(required = true) @JsonPropertyDescription("자식 테이블 물리명") String child) {
     }
+
+    /** 샘플 데이터 — 테이블 하나와 넣을 행들 */
+    public record SampleTable(
+            @JsonPropertyDescription("테이블 물리명") String name,
+            @JsonPropertyDescription("넣을 행 목록. 행 하나는 컬럼 물리명과 값의 맵이다. 값은 문자열, 숫자, 불리언, null. 날짜와 시각은 '2026-01-15', '2026-01-15 09:30:00' 같은 문자열로 적는다. 자동 증가 컬럼은 비워 두면 데이터베이스가 채운다") List<java.util.Map<String, Object>> rows) {
+    }
 }

@@ -3,6 +3,7 @@ crowfoot:
   mcp:
     core-base-url: http://localhost:8082
     web-base-url: http://localhost:8080
+    database-manager-base-url: http://localhost:8084
 logging:
   level:
     net.java21.crowfoot.mcp: DEBUG

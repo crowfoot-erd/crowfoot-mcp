@@ -7,7 +7,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * @param coreBaseUrl core의 기점 — 로컬 http://localhost:8082, 운영 http://crowfoot-core-api
  * @param webBaseUrl  문서 주소의 기점 — 로컬 http://localhost:8080, 운영 https://crowfoot.java21.net
+ * @param databaseManagerBaseUrl DB 매니저의 기점(샘플 데이터 넣기) — 로컬 http://localhost:8084, 운영 http://crowfoot-database-manager
  */
 @ConfigurationProperties("crowfoot.mcp")
-public record McpProperties(String coreBaseUrl, String webBaseUrl) {
+public record McpProperties(String coreBaseUrl, String webBaseUrl, String databaseManagerBaseUrl) {
 }
