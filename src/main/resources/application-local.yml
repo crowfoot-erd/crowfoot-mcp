@@ -1,0 +1,11 @@
+# 로컬 개발 — core는 같은 머신의 8082, 웹은 8080.
+crowfoot:
+  mcp:
+    core-base-url: http://localhost:8082
+    web-base-url: http://localhost:8080
+logging:
+  level:
+    net.java21.crowfoot.mcp: DEBUG
+
+server:
+  port: 8085   # 로컬 개발 — 프로세스별 포트 분리(운영은 전부 8080)

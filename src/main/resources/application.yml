@@ -1,0 +1,56 @@
+# 공통 설정 — 프로필 무관하게 같은 값만 둔다. 프로필별 값은 application-local.yml / application-prod.yml
+spring:
+  application:
+    name: crowfoot-mcp
+  # 기본 프로필 — 지정 없이 기동하면 local. 운영은 SPRING_PROFILES_ACTIVE=prod (k8s)
+  profiles:
+    default: local
+  ai:
+    mcp:
+      server:
+        name: crowfoot
+        version: 1.0.0
+        # 무상태 — 세션을 두지 않는다. 레플리카를 여러 개 둘 수 있다 (10-mcp/00-mcp-server.md Section 1.2)
+        protocol: STATELESS
+        type: SYNC
+        request-timeout: 120s
+        # 서버 안내문 — MCP 클라이언트가 연결할 때 읽는다 (10-mcp/00-mcp-server.md Section 5).
+        # 권고다. 반드시 지켜야 하는 것은 core의 검증과 실행 도구의 입력(버전·계획 지문)으로 건다.
+        instructions: |
+          Crowfoot은 ERD 서비스다. 이 서버로 Crowfoot 워크스페이스 하나의 요구사항과 ERD 문서를 읽고 쓰고, 데이터베이스에 반영한다.
+          원천은 Crowfoot 문서다. 대화 내용이 아니라 문서를 읽고 고친다.
+
+          순서
+          1. 작업을 시작할 때 get_workspace로 어느 워크스페이스에 연결돼 있는지 확인하고 사용자에게 알린다.
+          2. 기존 문서를 고치기 전에 get_document로 지금 상태를 읽는다.
+          3. 새로 설계하기 전에 get_design_context로 사전과 도메인 타입, 타입 코드를 확인한다. 사전에 있는 이름과 도메인 타입을 먼저 쓴다.
+          4. 요구사항은 사용자가 확인한 뒤에 save_requirements로 등록한다.
+          5. ERD는 apply_schema로 만들고 고친다. 테이블마다 근거 요구사항(requirementCodes)을 연결한다. 근거가 없으면 요구사항을 먼저 등록한다.
+          6. 작업이 끝나면 문서 주소(url)와 남은 반영 대기 요구사항을 사용자에게 알린다.
+
+          요구사항 쓰는 법
+          - 기능 단위로 쓰고 도메인(그룹)을 붙인다. 예: 도메인 "주문", 제목 "주문 생성".
+          - 기능에 딸린 업무 규칙은 그 기능의 내용(description)에 적는다. 규칙마다 항목을 따로 만들지 않는다.
+          - 문서 전체에 적용되는 규칙(모든 테이블에 생성 일시를 둔다 등)은 scope=document인 공통 요구사항으로 등록한다.
+          - 빠진 요구사항은 지우지 않고 status를 dropped로 바꾼다.
+
+          ERD 쓰는 법
+          - 외래 키 컬럼을 직접 만들지 않는다. 관계를 만들면 생긴다.
+          - N:M은 연결 테이블과 1:N 관계 두 개로 표현한다.
+          - 타입은 공용 타입 코드로 적는다(get_design_context의 rules).
+
+          하지 말 것
+          - 삭제(remove_objects)는 사용자가 명시적으로 요청했을 때만 한다.
+          - 데이터베이스 발급(issue_database), 배포(deploy_document), 변경 반영(apply_migration)은 계획 도구(plan_deployment, plan_migration)의 결과를 사용자에게 보여 주고 승인을 받은 뒤에만 부른다. 실행은 되돌릴 수 없다.
+          - 변경 계획에 삭제 문장(DESTRUCTIVE)이 있으면 따로 짚어서 보여 준다. 물리명을 바꾼 테이블·컬럼은 삭제 후 추가로 나오고 그 데이터가 사라진다.
+          - 접속 정보(비밀번호)는 이 서버로 볼 수 없다. Crowfoot 화면의 데이터베이스 탭에서 보라고 안내한다.
+        capabilities:
+          tool: true
+          resource: false
+          prompt: false
+          completion: false
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

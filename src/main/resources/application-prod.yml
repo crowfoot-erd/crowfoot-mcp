@@ -1,0 +1,13 @@
+# 운영 — 기점은 k8s Service DNS. 이 서버는 시크릿이 없다.
+crowfoot:
+  mcp:
+    # k8s Service가 80으로 서빙하므로 포트 불필요 — 컨테이너 실제 포트만 8080
+    core-base-url: ${CROWFOOT_CORE_URI:http://crowfoot-core-api}
+    web-base-url: ${CROWFOOT_WEB_URL:https://crowfoot.java21.net}
+logging:
+  level:
+    net.java21.crowfoot.mcp: INFO
+
+server:
+  port: 8080   # 운영 — 모든 서버 8080
+  shutdown: graceful   # 무중단 롤아웃 — SIGTERM 후 처리 중 요청을 마무리하고 종료
