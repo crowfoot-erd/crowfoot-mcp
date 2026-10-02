@@ -74,6 +74,12 @@ public final class Inputs {
             @JsonProperty @JsonPropertyDescription("정렬: ASC(기본) 또는 DESC") String order) {
     }
 
+    /**
+     * 관계 — 자식 쪽 기수(childMultiplicity)는 받지 않는다. 그림의 표기에만 쓰이는 값이고(DDL에 영향 없음),
+     * 클라이언트가 임의로 "0개 이상"을 고르면 이 서버로 만든 문서만 자식 쪽이 ○로 그려져 손으로 그린 문서와 달라 보인다.
+     * core가 에디터의 기본값(1:N은 ONE_OR_MORE, 1:1은 EXACTLY_ONE)으로 채우고, 있던 관계의 값은 그대로 둔다.
+     * 바꾸려면 Crowfoot 화면의 관계 편집에서 바꾼다 (docs 10-mcp/00-mcp-server.md Section 4.3)
+     */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record RelationshipInput(
             @JsonProperty(required = true) @JsonPropertyDescription("부모 테이블(참조되는 쪽, 기본 키가 있어야 한다)의 물리명") String parent,
@@ -81,7 +87,6 @@ public final class Inputs {
             @JsonProperty @JsonPropertyDescription("ONE_TO_MANY(기본) 또는 ONE_TO_ONE. N:M은 연결 테이블과 1:N 두 개로 표현한다") String type,
             @JsonProperty @JsonPropertyDescription("식별 관계 여부 — true면 외래 키가 자식의 기본 키에 들어간다. 기본 false") Boolean identifying,
             @JsonProperty @JsonPropertyDescription("부모 쪽 기수: EXACTLY_ONE(외래 키 NOT NULL, 기본) 또는 ZERO_OR_ONE(외래 키 NULL 허용)") String parentMultiplicity,
-            @JsonProperty @JsonPropertyDescription("자식 쪽 기수: 1:N은 ONE_OR_MORE(기본)·ZERO_OR_MORE, 1:1은 EXACTLY_ONE(기본)·ZERO_OR_ONE. 특별한 이유가 없으면 생략한다") String childMultiplicity,
             @JsonProperty @JsonPropertyDescription("NO_ACTION(기본), RESTRICT, CASCADE, SET_NULL, SET_DEFAULT") String onDelete,
             @JsonProperty @JsonPropertyDescription("NO_ACTION(기본), RESTRICT, CASCADE, SET_NULL, SET_DEFAULT") String onUpdate,
             @JsonProperty @JsonPropertyDescription("자식의 기존 컬럼을 외래 키로 쓸 때만. 생략하면 외래 키 컬럼을 새로 만든다") List<ColumnMappingInput> columnMappings) {
