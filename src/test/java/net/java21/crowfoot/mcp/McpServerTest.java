@@ -243,7 +243,8 @@ class McpServerTest {
         stub("GET /core/workspaces/77/connections", 200,
                 list("[{\"connectionId\":\"901\",\"name\":\"개발 PG\",\"dbmsType\":\"postgresql\",\"databaseName\":\"shop\",\"host\":\"db.internal\",\"username\":\"app\",\"managed\":false,\"mcpApplyAllowed\":" + allowed + "}]"));
         stub("GET /core/workspaces/77/models/501/connections/901/migration", 200,
-                ok("{\"sql\":" + JSON.writeValueAsString(sql) + ",\"warnings\":" + warnings + ",\"statementCount\":1}"));
+                ok("{\"sql\":" + JSON.writeValueAsString(sql) + ",\"warnings\":" + warnings + ",\"statementCount\":1,\"destructiveStatements\":"
+                        + (warnings.contains("DESTRUCTIVE") ? "[" + JSON.writeValueAsString(sql) + "]" : "[]") + "}"));
         stub("POST /core/workspaces/77/models/501/connections/901/migration/execute", 200,
                 ok("{\"executedCount\":1,\"failedCount\":0,\"statements\":[],\"warnings\":[]}"));
     }
@@ -284,14 +285,44 @@ class McpServerTest {
         stubMigration(sql, "[{\"code\":\"DESTRUCTIVE\",\"message\":\"파괴적 연산 포함\"}]", true);
         String arguments = "{\"documentId\":\"501\",\"planFingerprint\":\"" + fingerprint(sql) + "\",\"documentVersion\":9";
 
+        // 계획이 삭제 문장을 따로 알려 준다
+        JsonNode plan = text(call("plan_migration", "{\"documentId\":\"501\"}"));
+        assertThat(plan.path("destructiveCount").asInt()).isEqualTo(1);
+        assertThat(plan.path("destructiveStatements").get(0).asString()).isEqualTo(sql);
+
+        // 삭제 문장뿐이면 승인 없이는 실행하지 않는다
+        received.clear();
         JsonNode refused = text(call("apply_migration", arguments + "}"));
         assertThat(refused.path("executed").asBoolean()).isFalse();
-        assertThat(refused.path("reason").asString()).contains("DESTRUCTIVE");
+        assertThat(refused.path("reason").asString()).contains("삭제 문장");
         assertThat(calls()).noneMatch(call -> call.startsWith("POST"));
 
         JsonNode executed = text(call("apply_migration", arguments + ",\"acceptDestructive\":true}"));
         assertThat(executed.path("executed").asBoolean()).isTrue();
         assertThat(calls()).contains("POST /core/workspaces/77/models/501/connections/901/migration/execute");
+        Received execute = received.stream().filter(r -> r.path().endsWith("/migration/execute")).findFirst().orElseThrow();
+        assertThat(JSON.readTree(execute.body()).path("includeDestructive").asBoolean()).isTrue();
+    }
+
+    @Test
+    void 추가와_삭제가_섞인_계획은_승인이_없으면_추가만_실행하고_건너뛴_삭제를_알린다() throws Exception {
+        String add = "ALTER TABLE users ADD COLUMN grade VARCHAR(10);";
+        String drop = "ALTER TABLE users DROP COLUMN legacy;";
+        String sql = add + "\n" + drop;
+        stubMigration(sql, "[{\"code\":\"DESTRUCTIVE\",\"message\":\"파괴적 연산 포함\"}]", true);
+        stub("GET /core/workspaces/77/models/501/connections/901/migration", 200,
+                ok("{\"sql\":" + JSON.writeValueAsString(sql) + ",\"warnings\":[{\"code\":\"DESTRUCTIVE\",\"message\":\"파괴적 연산 포함\"}],"
+                        + "\"statementCount\":2,\"destructiveStatements\":[" + JSON.writeValueAsString(drop) + "]}"));
+        stub("POST /core/workspaces/77/models/501/connections/901/migration/execute", 200,
+                ok("{\"executedCount\":1,\"failedCount\":0,\"statements\":[],\"warnings\":[],\"skippedDestructive\":1}"));
+
+        JsonNode result = text(call("apply_migration",
+                "{\"documentId\":\"501\",\"planFingerprint\":\"" + fingerprint(sql) + "\",\"documentVersion\":9}"));
+
+        assertThat(result.path("executed").asBoolean()).isTrue();
+        assertThat(result.path("skipped").asString()).contains("삭제 문장 1건");
+        Received execute = received.stream().filter(r -> r.path().endsWith("/migration/execute")).findFirst().orElseThrow();
+        assertThat(JSON.readTree(execute.body()).path("includeDestructive").asBoolean()).isFalse();
     }
 
     @Test

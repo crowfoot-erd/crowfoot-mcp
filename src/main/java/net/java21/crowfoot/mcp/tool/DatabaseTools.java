@@ -158,13 +158,14 @@ public class DatabaseTools {
     @McpTool(name = "apply_migration", title = "변경 반영",
             description = "plan_migration의 변경 계획을 데이터베이스에서 실행한다. 되돌릴 수 없다. 사용자가 계획을 보고 승인한 뒤에만 부른다. "
                     + "planFingerprint와 documentVersion은 plan_migration이 돌려준 값이다 — 그 사이 문서나 데이터베이스가 바뀌었으면 실행하지 않고 새 계획을 돌려준다. "
-                    + "계획에 DESTRUCTIVE 경고가 있으면 사용자가 삭제 문장을 명시적으로 승인했을 때만 acceptDestructive=true를 넣는다.",
+                    + "삭제 문장(destructiveStatements — 테이블·컬럼·제약 삭제)은 기본으로 실행하지 않고 추가와 변경만 반영한다. "
+                    + "사용자가 삭제 문장을 보고 명시적으로 승인했을 때만 acceptDestructive=true를 넣는다.",
             annotations = @McpTool.McpAnnotations(readOnlyHint = false, destructiveHint = true, idempotentHint = false, openWorldHint = true))
     public String applyMigration(McpTransportContext context,
             @McpToolParam(description = "문서 ID") String documentId,
             @McpToolParam(description = "plan_migration이 돌려준 planFingerprint") String planFingerprint,
             @McpToolParam(description = "plan_migration이 돌려준 documentVersion") Long documentVersion,
-            @McpToolParam(required = false, description = "삭제 문장(DESTRUCTIVE)을 사용자가 승인했으면 true") Boolean acceptDestructive) {
+            @McpToolParam(required = false, description = "삭제 문장까지 실행하려면 true — 사용자가 삭제 문장을 보고 승인했을 때만. 생략하면 삭제 문장은 건너뛴다") Boolean acceptDestructive) {
         Caller caller = support.caller(context);
         ObjectNode plan = migrationPlan(caller, documentId);
         if (documentVersion == null || plan.path("documentVersion").asLong(-1) != documentVersion
@@ -179,14 +180,23 @@ public class DatabaseTools {
         if (!plan.path("executable").asBoolean(false)) {
             return notExecuted(plan.path("blocked").asString(NOT_ALLOWED));
         }
-        if (plan.path("destructive").asBoolean(false) && !Boolean.TRUE.equals(acceptDestructive)) {
-            return notExecuted("계획에 삭제 문장(DESTRUCTIVE)이 있다. 삭제 문장을 사용자에게 짚어서 보여 주고 승인을 받은 뒤 acceptDestructive=true로 다시 부른다.");
+        boolean includeDestructive = Boolean.TRUE.equals(acceptDestructive);
+        int destructiveCount = plan.path("destructiveCount").asInt(0);
+        // 삭제 문장은 사용자가 명시적으로 승인했을 때만 실행한다. 승인이 없으면 추가와 변경만 실행한다
+        if (!includeDestructive && destructiveCount >= plan.path("statementCount").asInt(0)) {
+            return notExecuted("계획에 삭제 문장만 있다. 삭제 문장을 사용자에게 짚어서 보여 주고 승인을 받은 뒤 acceptDestructive=true로 다시 부른다.");
         }
         String connectionId = plan.path("target").path("connectionId").asString();
+        ObjectNode body = support.object();
+        body.put("includeDestructive", includeDestructive);
         ObjectNode out = (ObjectNode) support.core()
-                .post(caller, support.modelPath(caller, documentId, "/connections/" + connectionId + "/migration/execute"), null)
+                .post(caller, support.modelPath(caller, documentId, "/connections/" + connectionId + "/migration/execute"), body)
                 .path("response").deepCopy();
         out.put("executed", true);
+        if (out.path("skippedDestructive").asInt(0) > 0) {
+            out.put("skipped", "삭제 문장 " + out.path("skippedDestructive").asInt() + "건은 실행하지 않았다. 추가와 변경만 반영했다. "
+                    + "삭제까지 하려면 그 문장을 사용자에게 보여 주고 승인을 받은 뒤 plan_migration을 다시 불러 acceptDestructive=true로 실행한다.");
+        }
         if (out.path("failedCount").asInt(0) > 0) {
             out.put("next", "실패한 문장이 있다. 나머지는 실행됐다. plan_migration을 다시 불러 남은 차이를 확인한다.");
         }
@@ -296,6 +306,12 @@ public class DatabaseTools {
             destructive |= "DESTRUCTIVE".equals(warning.path("code").asString(""));
         }
         plan.put("destructive", destructive);
+        // 삭제 문장 — 실행은 기본으로 이 문장을 뺀다. 사용자가 승인했을 때만 포함한다
+        JsonNode destructiveStatements = migration.path("destructiveStatements");
+        plan.put("destructiveCount", destructiveStatements.isArray() ? destructiveStatements.size() : 0);
+        if (destructiveStatements.isArray() && !destructiveStatements.isEmpty()) {
+            plan.set("destructiveStatements", destructiveStatements);
+        }
         boolean allowed = target.path("mcpApplyAllowed").asBoolean(false);
         plan.put("executable", allowed);
         if (!allowed) {

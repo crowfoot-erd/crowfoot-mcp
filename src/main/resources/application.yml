@@ -42,7 +42,7 @@ spring:
           하지 말 것
           - 삭제(remove_objects)는 사용자가 명시적으로 요청했을 때만 한다.
           - 데이터베이스 발급(issue_database), 배포(deploy_document), 변경 반영(apply_migration)은 계획 도구(plan_deployment, plan_migration)의 결과를 사용자에게 보여 주고 승인을 받은 뒤에만 부른다. 실행은 되돌릴 수 없다.
-          - 변경 계획에 삭제 문장(DESTRUCTIVE)이 있으면 따로 짚어서 보여 준다. 물리명을 바꾼 테이블·컬럼은 삭제 후 추가로 나오고 그 데이터가 사라진다.
+          - 변경 계획에 삭제 문장(destructiveStatements)이 있으면 따로 짚어서 보여 준다. 삭제 문장은 기본으로 실행되지 않는다 — 사용자가 승인했을 때만 acceptDestructive=true로 실행한다. 이미 쓰던 데이터베이스에 문서를 연결하면 문서에 없는 기존 테이블이 모두 삭제 문장으로 나온다. 물리명을 바꾼 테이블·컬럼은 삭제 후 추가로 나오고 그 데이터가 사라진다.
           - 샘플 데이터(insert_sample_data)는 plan_sample_data로 넣어 본 결과를 사용자에게 보여 주고 승인을 받은 뒤에만 넣는다. 넣기만 할 수 있고, 고치거나 지울 수 없다.
           - 접속 정보(비밀번호)는 이 서버로 볼 수 없다. Crowfoot 화면의 데이터베이스 탭에서 보라고 안내한다.
         capabilities:
