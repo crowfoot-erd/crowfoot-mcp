@@ -141,7 +141,7 @@ class McpServerTest {
     }
 
     @Test
-    void 도구는_20개이고_지우거나_실행하는_도구만_파괴적으로_표시한다() throws Exception {
+    void 도구는_21개이고_지우거나_실행하는_도구만_파괴적으로_표시한다() throws Exception {
         JsonNode tools = JSON.readTree(rpc("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", true).body()).path("result").path("tools");
 
         List<String> names = new ArrayList<>();
@@ -157,7 +157,7 @@ class McpServerTest {
         assertThat(names).containsExactlyInAnyOrder("get_workspace", "list_documents", "get_document", "get_design_context",
                 "validate_document", "export_ddl", "create_document", "import_ddl", "save_requirements", "apply_schema", "remove_objects",
                 "list_databases", "issue_database", "list_connections", "plan_deployment", "deploy_document", "plan_migration", "apply_migration",
-                "plan_sample_data", "insert_sample_data");
+                "plan_sample_data", "insert_sample_data", "report_bug");
         assertThat(destructive).containsExactlyInAnyOrder("remove_objects", "deploy_document", "apply_migration");
     }
 

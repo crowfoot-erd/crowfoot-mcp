@@ -64,7 +64,9 @@ public class DocumentTools {
         tracing.set("untracedTables — 근거 요구사항이 없는 테이블", outline.path("untracedTables"));
         JsonNode ddl = support.core().get(caller, support.modelPath(caller, documentId, "/ddl")).path("response");
         out.set("ddlWarnings", ddl.path("warnings"));
-        out.put("note", "물리명 규칙, 외래 키 타입 불일치 같은 설계 검증 17종은 Crowfoot 에디터의 검증 패널에서 확인한다.");
+        out.set("validationExceptions — 사용자가 의도된 예외로 둔 검증 경고(사유 포함)", outline.path("validationExceptions"));
+        out.put("note", "물리명 규칙, 외래 키 타입 불일치 같은 설계 검증은 Crowfoot 에디터의 검증 패널에서 확인한다. "
+                + "의도된 예외로 둔 경고는 다시 고치라고 권하지 않는다.");
         out.put("url", support.documentUrl(caller, documentId));
         return support.text(out);
     }
@@ -96,7 +98,8 @@ public class DocumentTools {
 
     @McpTool(name = "import_ddl", title = "DDL로 새 문서 만들기",
             description = "CREATE TABLE 스크립트로 새 ERD 문서를 만든다. 항상 새 문서를 만든다 — 기존 문서는 apply_schema로 고친다. "
-                    + "previewOnly=true로 먼저 불러 읽은 테이블과 읽지 못한 문장을 확인한다. CREATE INDEX는 읽지 않는다. 요구사항 연결과 그룹은 만든 뒤 save_requirements·apply_schema로 한다.",
+                    + "previewOnly=true로 먼저 불러 읽은 테이블, 읽지 못한 문장(skipped), 읽었지만 줄이거나 버린 것(warnings)을 확인하고 사용자에게 보여 준다. "
+                    + "인덱스(KEY·INDEX·FULLTEXT·CREATE INDEX), CHECK, 생성 컬럼, ON UPDATE, 소수 초를 읽는다. 요구사항 연결과 그룹은 만든 뒤 save_requirements·apply_schema로 한다.",
             annotations = @McpTool.McpAnnotations(readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false))
     public String importDdl(McpTransportContext context,
             @McpToolParam(description = "DDL의 방언이자 새 문서의 대상 DBMS 코드(mysql 또는 postgresql)") String databaseType,
@@ -121,6 +124,7 @@ public class DocumentTools {
         out.set("tableCount", response.path("tableCount"));
         out.set("relationshipCount", response.path("relationshipCount"));
         out.set("skipped", response.path("skipped"));
+        out.set("warnings", response.path("warnings"));
         return support.text(out);
     }
 

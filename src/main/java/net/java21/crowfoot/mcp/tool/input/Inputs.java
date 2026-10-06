@@ -37,7 +37,20 @@ public final class Inputs {
             @JsonProperty @JsonPropertyDescription("기본 키 컬럼의 물리명. 주면 기본 키를 이 목록으로 바꾼다") List<String> primaryKey,
             @JsonProperty @JsonPropertyDescription("유니크 키. 같은 컬럼 조합이 없으면 만든다") List<UniqueInput> uniques,
             @JsonProperty @JsonPropertyDescription("인덱스. 같은 컬럼 조합이 없으면 만든다. 관계의 외래 키 인덱스는 자동으로 생기므로 넣지 않는다") List<IndexInput> indexes,
-            @JsonProperty @JsonPropertyDescription("이 테이블의 근거가 되는 요구사항 코드. 그 요구사항에 이 테이블을 연결하고 반영한 것으로 표시한다") List<String> requirementCodes) {
+            @JsonProperty @JsonPropertyDescription("이 테이블의 근거가 되는 요구사항 코드. 그 요구사항에 이 테이블을 연결하고 반영한 것으로 표시한다") List<String> requirementCodes,
+            @JsonProperty @JsonPropertyDescription("CHECK 제약. 같은 이름이 있으면 식을 바꾸고 없으면 더한다") List<CheckInput> checks) {
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record CheckInput(
+            @JsonProperty @JsonPropertyDescription("제약 이름. 생략하면 ck_테이블_n 으로 만든다") String name,
+            @JsonProperty(required = true) @JsonPropertyDescription("CHECK 식(SQL 원문). 예: status IN ('DRAFT', 'PUBLISHED')") String expression) {
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record GeneratedInput(
+            @JsonProperty(required = true) @JsonPropertyDescription("생성식(SQL 원문). 빈 문자열이면 생성 컬럼을 해제한다") String expression,
+            @JsonProperty @JsonPropertyDescription("저장형(STORED)이면 true(기본), 가상형(VIRTUAL)이면 false") Boolean stored) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -46,14 +59,16 @@ public final class Inputs {
             @JsonProperty @JsonPropertyDescription("물리명을 바꿀 때 새 물리명. 기존 컬럼에만 쓴다") String rename,
             @JsonProperty @JsonPropertyDescription("논리명") String logicalName,
             @JsonProperty @JsonPropertyDescription("컬럼 설명") String description,
-            @JsonProperty @JsonPropertyDescription("공용 타입 코드: INT, BIGINT, SMALLINT, TINYINT, DECIMAL, NUMERIC, FLOAT, DOUBLE, CHAR, VARCHAR, TEXT, BOOLEAN, DATE, TIME, DATETIME, TIMESTAMP, JSON, UUID, BLOB. DBMS의 물리 표기를 넣지 않는다. 새 컬럼에 필수(domainType을 주면 생략)") String dataType,
-            @JsonProperty @JsonPropertyDescription("길이 — CHAR·VARCHAR에만") Integer length,
-            @JsonProperty @JsonPropertyDescription("정밀도 — DECIMAL·NUMERIC에만") Integer precision,
+            @JsonProperty @JsonPropertyDescription("공용 타입 코드: INT, BIGINT, SMALLINT, TINYINT, DECIMAL, NUMERIC, FLOAT, DOUBLE, CHAR, VARCHAR, TEXT, MEDIUMTEXT, LONGTEXT, BOOLEAN, DATE, TIME, DATETIME, TIMESTAMP, JSON, UUID, BLOB, BINARY, VARBINARY. DBMS의 물리 표기를 넣지 않는다. 새 컬럼에 필수(domainType을 주면 생략)") String dataType,
+            @JsonProperty @JsonPropertyDescription("길이 — CHAR·VARCHAR·BINARY·VARBINARY에만") Integer length,
+            @JsonProperty @JsonPropertyDescription("정밀도 — DECIMAL·NUMERIC에만. TIME·DATETIME·TIMESTAMP에서는 소수 초 자릿수(0~6)") Integer precision,
             @JsonProperty @JsonPropertyDescription("스케일 — DECIMAL·NUMERIC에만") Integer scale,
             @JsonProperty @JsonPropertyDescription("NULL 허용 여부. 새 컬럼에서 생략하면 true") Boolean nullable,
-            @JsonProperty @JsonPropertyDescription("기본값 표현. 예: 0, CURRENT_TIMESTAMP") String defaultValue,
+            @JsonProperty @JsonPropertyDescription("기본값. 문자열은 따옴표 없이 쓴다(ACTIVE — Crowfoot이 DDL에서 따옴표를 붙인다). 예: 0, ACTIVE, CURRENT_TIMESTAMP(6), (uuid())") String defaultValue,
             @JsonProperty @JsonPropertyDescription("자동 증가 — 정수 타입의 단일 컬럼 기본 키에만") Boolean autoIncrement,
-            @JsonProperty @JsonPropertyDescription("워크스페이스 도메인 타입의 이름(get_design_context로 확인). 타입·길이·NULL 허용·기본값을 그 값으로 채운다") String domainType) {
+            @JsonProperty @JsonPropertyDescription("워크스페이스 도메인 타입의 이름(get_design_context로 확인). 타입·길이·NULL 허용·기본값을 그 값으로 채운다") String domainType,
+            @JsonProperty @JsonPropertyDescription("생성 컬럼(계산 컬럼). 생성 컬럼에는 기본값·자동 증가·onUpdate를 두지 않는다") GeneratedInput generated,
+            @JsonProperty @JsonPropertyDescription("행을 고칠 때 자동으로 넣는 값(MySQL ON UPDATE). 예: CURRENT_TIMESTAMP(6). 빈 문자열이면 해제") String onUpdate) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -65,7 +80,9 @@ public final class Inputs {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record IndexInput(
             @JsonProperty @JsonPropertyDescription("인덱스 이름. 생략하면 idx_테이블_컬럼… 으로 만든다") String name,
-            @JsonProperty(required = true) @JsonPropertyDescription("인덱스 컬럼(순서대로)") List<IndexColumnInput> columns) {
+            @JsonProperty(required = true) @JsonPropertyDescription("인덱스 컬럼(순서대로)") List<IndexColumnInput> columns,
+            @JsonProperty @JsonPropertyDescription("종류: BTREE(기본), FULLTEXT(전문 검색), SPATIAL(공간). FULLTEXT·SPATIAL은 MySQL만 DDL에 낸다") String type,
+            @JsonProperty @JsonPropertyDescription("FULLTEXT 인덱스의 MySQL 파서 이름. 예: ngram") String parser) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

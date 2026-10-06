@@ -68,6 +68,11 @@ public class ToolSupport {
         return webBaseUrl + "/workspaces/" + caller.workspaceId() + "/models/" + documentId;
     }
 
+    /** 웹 경로(/community/posts/1)를 사용자가 여는 주소로 */
+    public String webUrl(String path) {
+        return webBaseUrl + (path.startsWith("/") ? path : "/" + path);
+    }
+
     /** 문서를 고친 뒤의 버전 메모 — 출처를 적는다 */
     public String note(String what) {
         return "Claude(MCP): " + what;

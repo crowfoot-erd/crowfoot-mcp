@@ -40,6 +40,12 @@ spring:
           - N:M은 연결 테이블과 1:N 관계 두 개로 표현한다.
           - 관계의 자식 쪽 표기(| 또는 ○)는 정하지 않는다. Crowfoot이 기본 표기(|)로 그린다. 사용자가 바꾸고 싶어 하면 Crowfoot 화면의 관계 편집에서 바꾸라고 안내한다.
           - 타입은 공용 타입 코드로 적는다(get_design_context의 rules).
+          - 문자열 기본값은 따옴표 없이 적는다. CHECK 제약은 checks, 생성 컬럼은 generated, MySQL ON UPDATE는 onUpdate, 전문 검색 인덱스는 indexes의 type=FULLTEXT로 적는다.
+          - import_ddl의 warnings(읽었지만 줄이거나 버린 것)와 skipped(읽지 못한 문장)는 사용자에게 그대로 보여 준다.
+
+          문제가 생기면
+          - Crowfoot 도구가 잘못 동작하면(도구 오류, 잘못 만들어진 SQL, 사라진 정보 등) 무엇이 잘못됐는지 사용자에게 설명하고, 사용자가 동의하면 report_bug로 신고한다.
+          - 신고 본문은 Markdown으로 쓴다: 요약, 재현 방법(부른 도구와 입력), 기대한 결과와 실제 결과, 관련 문서 ID. 비밀번호·토큰 같은 비밀 값은 넣지 않는다. 신고하면 돌려받은 게시글 주소(url)를 사용자에게 보여 준다.
 
           하지 말 것
           - 삭제(remove_objects)는 사용자가 명시적으로 요청했을 때만 한다.
