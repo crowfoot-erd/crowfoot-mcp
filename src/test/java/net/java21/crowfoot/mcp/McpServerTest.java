@@ -141,7 +141,7 @@ class McpServerTest {
     }
 
     @Test
-    void 도구는_21개이고_지우거나_실행하는_도구만_파괴적으로_표시한다() throws Exception {
+    void 도구는_23개이고_지우거나_실행하는_도구만_파괴적으로_표시한다() throws Exception {
         JsonNode tools = JSON.readTree(rpc("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", true).body()).path("result").path("tools");
 
         List<String> names = new ArrayList<>();
@@ -157,8 +157,9 @@ class McpServerTest {
         assertThat(names).containsExactlyInAnyOrder("get_workspace", "list_documents", "get_document", "get_design_context",
                 "validate_document", "export_ddl", "create_document", "import_ddl", "save_requirements", "apply_schema", "remove_objects",
                 "list_databases", "issue_database", "list_connections", "plan_deployment", "deploy_document", "plan_migration", "apply_migration",
-                "plan_sample_data", "insert_sample_data", "report_bug");
-        assertThat(destructive).containsExactlyInAnyOrder("remove_objects", "deploy_document", "apply_migration");
+                "plan_sample_data", "insert_sample_data", "report_bug", "plan_sync", "apply_sync");
+        // apply_sync는 includeRemovals=true일 때 문서에서 지운다 — 지울 수 있는 도구라 파괴적으로 표시한다
+        assertThat(destructive).containsExactlyInAnyOrder("remove_objects", "deploy_document", "apply_migration", "apply_sync");
     }
 
     @Test
@@ -338,6 +339,77 @@ class McpServerTest {
                 "{\"documentId\":\"501\",\"planFingerprint\":\"" + fingerprint(sql) + "\",\"documentVersion\":9}"));
         assertThat(result.path("executed").asBoolean()).isFalse();
         assertThat(calls()).noneMatch(call -> call.startsWith("POST"));
+    }
+
+    /* ---------- DB → 문서 동기화 ---------- */
+
+    private static final String SYNC_PLAN = "{\"items\":[{\"kind\":\"column\",\"action\":\"add\",\"table\":\"users\",\"name\":\"grade\",\"detail\":\"VARCHAR(10)\"}],"
+            + "\"removals\":[{\"kind\":\"table\",\"action\":\"remove\",\"table\":\"legacy\",\"name\":\"legacy\",\"detail\":\"not-in-db\"}],"
+            + "\"changeCount\":1,\"removalCount\":1,\"planFingerprint\":\"abc123\",\"version\":9}";
+
+    private void stubSync() {
+        stub("GET /core/workspaces/77/models/501/outline", 200, ok("{\"name\":\"쇼핑몰 ERD\",\"version\":9,\"databaseType\":\"postgresql\",\"sourceConnectionId\":\"901\"}"));
+        stub("GET /core/workspaces/77/models/501/connections/901/sync", 200, ok(SYNC_PLAN));
+    }
+
+    @Test
+    void 동기화_계획은_원천_커넥션으로_읽고_삭제는_따로_알리며_아무것도_바꾸지_않는다() throws Exception {
+        stubSync();
+
+        JsonNode plan = text(call("plan_sync", "{\"documentId\":\"501\"}"));
+
+        assertThat(plan.path("planFingerprint").asString()).isEqualTo("abc123");
+        assertThat(plan.path("items").get(0).path("name").asString()).isEqualTo("grade");
+        assertThat(plan.path("removalCount").asInt()).isEqualTo(1);
+        assertThat(plan.path("next").asString()).contains("includeRemovals=true");
+        assertThat(plan.path("url").asString()).isEqualTo("https://crowfoot.example/workspaces/77/models/501");
+        assertThat(calls()).contains("GET /core/workspaces/77/models/501/connections/901/sync");
+        assertThat(calls()).noneMatch(call -> call.startsWith("POST"));
+    }
+
+    @Test
+    void 동기화_적용은_지문을_넘기고_삭제는_승인_값이_있을_때만_요청한다() throws Exception {
+        stubSync();
+        stub("POST /core/workspaces/77/models/501/connections/901/sync/apply", 200,
+                ok("{\"changed\":true,\"workspaceId\":\"77\",\"modelId\":\"501\",\"version\":10,\"items\":[],\"removals\":[],"
+                        + "\"changeCount\":1,\"removalCount\":0,\"skippedRemovals\":1}"));
+
+        JsonNode result = text(call("apply_sync", "{\"documentId\":\"501\",\"planFingerprint\":\"abc123\"}"));
+
+        assertThat(result.path("applied").asBoolean()).isTrue();
+        assertThat(result.path("version").asLong()).isEqualTo(10);
+        assertThat(result.path("url").asString()).isEqualTo("https://crowfoot.example/workspaces/77/models/501");
+        assertThat(result.path("next").asString()).contains("1건");
+        Received apply = received.stream().filter(r -> r.path().endsWith("/sync/apply")).findFirst().orElseThrow();
+        assertThat(JSON.readTree(apply.body()).path("planFingerprint").asString()).isEqualTo("abc123");
+        assertThat(JSON.readTree(apply.body()).path("includeRemovals").asBoolean()).isFalse();
+
+        received.clear();
+        text(call("apply_sync", "{\"documentId\":\"501\",\"planFingerprint\":\"abc123\",\"includeRemovals\":true}"));
+        Received withRemovals = received.stream().filter(r -> r.path().endsWith("/sync/apply")).findFirst().orElseThrow();
+        assertThat(JSON.readTree(withRemovals.body()).path("includeRemovals").asBoolean()).isTrue();
+    }
+
+    @Test
+    void 동기화_계획이_바뀌었으면_적용하지_않고_새_계획을_돌려준다() throws Exception {
+        stubSync();
+        stub("POST /core/workspaces/77/models/501/connections/901/sync/apply", 409,
+                "{\"header\":{\"isSuccessful\":false,\"resultCode\":\"SYNC_PLAN_CHANGED\",\"resultMessage\":\"동기화 계획이 바뀌었습니다\"}}");
+
+        JsonNode result = text(call("apply_sync", "{\"documentId\":\"501\",\"planFingerprint\":\"old\"}"));
+
+        assertThat(result.path("applied").asBoolean()).isFalse();
+        assertThat(result.path("plan").path("planFingerprint").asString()).isEqualTo("abc123");
+    }
+
+    @Test
+    void 데이터베이스에_연결되지_않은_문서는_동기화하지_않는다() throws Exception {
+        stub("GET /core/workspaces/77/models/501/outline", 200, ok("{\"name\":\"쇼핑몰 ERD\",\"version\":9,\"databaseType\":\"postgresql\",\"sourceConnectionId\":null}"));
+
+        JsonNode result = call("plan_sync", "{\"documentId\":\"501\"}");
+
+        assertThat(result.path("isError").asBoolean()).isTrue();
+        assertThat(calls()).noneMatch(call -> call.contains("/sync"));
     }
 
     /* ---------- 샘플 데이터 ---------- */

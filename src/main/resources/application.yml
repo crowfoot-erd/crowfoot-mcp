@@ -43,6 +43,17 @@ spring:
           - 문자열 기본값은 따옴표 없이 적는다. CHECK 제약은 checks, 생성 컬럼은 generated, MySQL ON UPDATE는 onUpdate, 전문 검색 인덱스는 indexes의 type=FULLTEXT로 적는다.
           - import_ddl의 warnings(읽었지만 줄이거나 버린 것)와 skipped(읽지 못한 문장)는 사용자에게 그대로 보여 준다.
 
+          요구사항이 바뀌었을 때
+          - get_document의 반영 대기 요구사항에서 changes(before → after)를 읽고, 무엇이 바뀌었는지 사용자에게 먼저 요약한다.
+          - 바뀐 내용에 맞게 apply_schema로 ERD를 고치고 requirementCodes로 그 요구사항을 연결해 반영으로 표시한다.
+          - 문서가 데이터베이스에 연결돼 있으면(sourceConnectionId) plan_migration으로 DB 변경 계획을 보여 주고, 승인받은 뒤 apply_migration으로 반영한다.
+          - 반영할 구조 변경이 없는 요구사항(문구만 바뀐 것 등)도 apply_schema에 그 요구사항 코드를 연결해 반영으로 표시한다.
+
+          데이터베이스가 먼저 바뀌었을 때
+          - 동기화(plan_sync, apply_sync)는 데이터베이스 → 문서 방향이다. 데이터베이스의 구조를 문서로 가져오고, 데이터베이스는 바꾸지 않는다. 문서를 데이터베이스에 반영하는 반대 방향은 plan_migration, apply_migration이다.
+          - plan_sync의 결과(items)를 사용자에게 보여 주고 승인을 받은 뒤에만 apply_sync를 부른다.
+          - removals(문서에만 있는 테이블·컬럼·관계·인덱스)는 따로 짚어서 보여 준다. 기본으로 지우지 않는다 — 사용자가 지우라고 명시적으로 승인했을 때만 includeRemovals=true로 적용한다.
+
           문제가 생기면
           - Crowfoot 도구가 잘못 동작하면(도구 오류, 잘못 만들어진 SQL, 사라진 정보 등) 무엇이 잘못됐는지 사용자에게 설명하고, 사용자가 동의하면 report_bug로 신고한다.
           - 신고 본문은 Markdown으로 쓴다: 요약, 재현 방법(부른 도구와 입력), 기대한 결과와 실제 결과, 관련 문서 ID. 비밀번호·토큰 같은 비밀 값은 넣지 않는다. 신고하면 돌려받은 게시글 주소(url)를 사용자에게 보여 준다.

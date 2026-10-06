@@ -22,7 +22,8 @@ public class DocumentTools {
     }
 
     @McpTool(name = "get_document", title = "문서 읽기",
-            description = "ERD 문서의 지금 상태. 요구사항(상태 판정 포함), 테이블, 컬럼, 키, 관계, 그룹을 이름 기준으로 돌려준다. 기존 문서를 고치기 전에 반드시 먼저 읽는다.",
+            description = "ERD 문서의 지금 상태. 요구사항(상태 판정 포함), 테이블, 컬럼, 키, 관계, 그룹을 이름 기준으로 돌려준다. 기존 문서를 고치기 전에 반드시 먼저 읽는다. "
+                    + "반영 대기(PENDING) 요구사항에는 changes(마지막으로 반영한 내용 before → 지금 내용 after)가 붙는다.",
             annotations = @McpTool.McpAnnotations(readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
     public String getDocument(McpTransportContext context,
             @McpToolParam(description = "문서 ID(list_documents의 documentId)") String documentId) {
@@ -54,6 +55,10 @@ public class DocumentTools {
                 item.set("code", requirement.path("code"));
                 item.set("title", requirement.path("title"));
                 item.set("tables", requirement.path("tables"));
+                if (requirement.has("changes")) {
+                    // 반영 대기 — 마지막으로 반영한 내용(before)과 지금 내용(after) (08-core/17-model-edit.md Section 2.4)
+                    item.set("changes", requirement.path("changes"));
+                }
             }
         }
         ObjectNode tracing = out.putObject("requirementTracing");

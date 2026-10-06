@@ -157,19 +157,20 @@ public class DatabaseTools {
 
     @McpTool(name = "apply_migration", title = "변경 반영",
             description = "plan_migration의 변경 계획을 데이터베이스에서 실행한다. 되돌릴 수 없다. 사용자가 계획을 보고 승인한 뒤에만 부른다. "
-                    + "planFingerprint와 documentVersion은 plan_migration이 돌려준 값이다 — 그 사이 문서나 데이터베이스가 바뀌었으면 실행하지 않고 새 계획을 돌려준다. "
+                    + "planFingerprint는 plan_migration이 돌려준 값이다 — 그 사이 문서나 데이터베이스가 바뀌어 실행할 SQL이 달라졌으면 실행하지 않고 새 계획을 돌려준다. "
                     + "삭제 문장(destructiveStatements — 테이블·컬럼·제약 삭제)은 기본으로 실행하지 않고 추가와 변경만 반영한다. "
                     + "사용자가 삭제 문장을 보고 명시적으로 승인했을 때만 acceptDestructive=true를 넣는다.",
             annotations = @McpTool.McpAnnotations(readOnlyHint = false, destructiveHint = true, idempotentHint = false, openWorldHint = true))
     public String applyMigration(McpTransportContext context,
             @McpToolParam(description = "문서 ID") String documentId,
             @McpToolParam(description = "plan_migration이 돌려준 planFingerprint") String planFingerprint,
-            @McpToolParam(description = "plan_migration이 돌려준 documentVersion") Long documentVersion,
+            @McpToolParam(required = false, description = "plan_migration이 돌려준 documentVersion(참고용 — 실행 조건은 planFingerprint다)") Long documentVersion,
             @McpToolParam(required = false, description = "삭제 문장까지 실행하려면 true — 사용자가 삭제 문장을 보고 승인했을 때만. 생략하면 삭제 문장은 건너뛴다") Boolean acceptDestructive) {
         Caller caller = support.caller(context);
         ObjectNode plan = migrationPlan(caller, documentId);
-        if (documentVersion == null || plan.path("documentVersion").asLong(-1) != documentVersion
-                || planFingerprint == null || !planFingerprint.equals(plan.path("planFingerprint").asString())) {
+        // 계획이 같은지는 SQL 지문으로 본다. 문서 버전은 배치만 바꾼 저장(에디터가 열 때 하는 자동 배치 등)에도
+        // 오르므로 실행 조건으로 쓰지 않는다 — SQL이 같으면 사용자가 본 계획 그대로 실행된다 (10-mcp/00-mcp-server.md Section 6)
+        if (planFingerprint == null || !planFingerprint.equals(plan.path("planFingerprint").asString())) {
             plan.put("executed", false);
             plan.put("reason", "사용자가 본 계획과 지금 계획이 다르다(문서나 데이터베이스가 그 사이에 바뀌었다). 이 새 계획을 사용자에게 다시 보여 주고 승인받는다.");
             return support.text(plan);
@@ -317,7 +318,7 @@ public class DatabaseTools {
         if (!allowed) {
             plan.put("blocked", NOT_ALLOWED);
         }
-        plan.put("next", "SQL을 사용자에게 보여 주고 승인을 받는다. 승인하면 apply_migration에 planFingerprint와 documentVersion을 그대로 넣어 부른다. 실행은 되돌릴 수 없다.");
+        plan.put("next", "SQL을 사용자에게 보여 주고 승인을 받는다. 승인하면 apply_migration에 planFingerprint를 그대로 넣어 부른다. 실행은 되돌릴 수 없다.");
         return plan;
     }
 
