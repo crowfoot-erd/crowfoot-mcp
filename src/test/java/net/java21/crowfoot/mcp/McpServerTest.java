@@ -141,7 +141,7 @@ class McpServerTest {
     }
 
     @Test
-    void 도구는_23개이고_지우거나_실행하는_도구만_파괴적으로_표시한다() throws Exception {
+    void 도구는_26개이고_지우거나_실행하는_도구만_파괴적으로_표시한다() throws Exception {
         JsonNode tools = JSON.readTree(rpc("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", true).body()).path("result").path("tools");
 
         List<String> names = new ArrayList<>();
@@ -157,9 +157,12 @@ class McpServerTest {
         assertThat(names).containsExactlyInAnyOrder("get_workspace", "list_documents", "get_document", "get_design_context",
                 "validate_document", "export_ddl", "create_document", "import_ddl", "save_requirements", "apply_schema", "remove_objects",
                 "list_databases", "issue_database", "list_connections", "plan_deployment", "deploy_document", "plan_migration", "apply_migration",
-                "plan_sample_data", "insert_sample_data", "report_bug", "plan_sync", "apply_sync");
+                "plan_sample_data", "insert_sample_data", "report_bug", "plan_sync", "apply_sync",
+                "plan_requirements_sync", "apply_requirements_sync", "check_requirements");
         // apply_sync는 includeRemovals=true일 때 문서에서 지운다 — 지울 수 있는 도구라 파괴적으로 표시한다
-        assertThat(destructive).containsExactlyInAnyOrder("remove_objects", "deploy_document", "apply_migration", "apply_sync");
+        // apply_requirements_sync는 acceptRemovals=true일 때 요구사항을 지운다
+        assertThat(destructive).containsExactlyInAnyOrder("remove_objects", "deploy_document", "apply_migration", "apply_sync",
+                "apply_requirements_sync");
     }
 
     @Test
@@ -339,6 +342,82 @@ class McpServerTest {
                 "{\"documentId\":\"501\",\"planFingerprint\":\"" + fingerprint(sql) + "\",\"documentVersion\":9}"));
         assertThat(result.path("executed").asBoolean()).isFalse();
         assertThat(calls()).noneMatch(call -> call.startsWith("POST"));
+    }
+
+    /* ---------- 요구사항 동기화 ---------- */
+
+    private static final String REQ_SYNC_PLAN = "{\"workspaceId\":\"77\",\"modelId\":\"501\",\"documentVersion\":9,"
+            + "\"added\":[{\"index\":1,\"code\":null,\"title\":\"리뷰 작성\"}],"
+            + "\"updated\":[{\"index\":0,\"code\":\"REQ-001\",\"title\":\"회원 가입\",\"matchedBy\":\"code\","
+            + "\"changes\":[{\"field\":\"description\",\"before\":\"a\",\"after\":\"b\"}]}],"
+            + "\"missing\":[{\"code\":\"REQ-003\",\"title\":\"쿠폰 발급\",\"status\":\"draft\",\"action\":\"drop\"}],"
+            + "\"unchanged\":0,\"changeCount\":3,\"planFingerprint\":\"f1\"}";
+
+    private static final String REQ_ITEMS = "[{\"code\":\"REQ-001\",\"title\":\"회원 가입\",\"description\":\"b\"},{\"title\":\"리뷰 작성\"}]";
+
+    @Test
+    void 요구사항_동기화_계획은_목록과_삭제_승인_값을_넘기고_빠짐을_따로_알린다() throws Exception {
+        stub("POST /core/workspaces/77/models/501/requirements/sync", 200, ok(REQ_SYNC_PLAN));
+
+        JsonNode plan = text(call("plan_requirements_sync", "{\"documentId\":\"501\",\"items\":" + REQ_ITEMS + "}"));
+
+        assertThat(plan.path("planFingerprint").asString()).isEqualTo("f1");
+        assertThat(plan.path("missing").get(0).path("action").asString()).isEqualTo("drop");
+        assertThat(plan.path("next").asString()).contains("missing");
+        assertThat(plan.has("workspaceId")).isFalse();
+        Received request = received.stream().filter(r -> r.path().endsWith("/requirements/sync")).findFirst().orElseThrow();
+        assertThat(JSON.readTree(request.body()).path("items").size()).isEqualTo(2);
+        assertThat(JSON.readTree(request.body()).path("acceptRemovals").asBoolean()).isFalse();
+    }
+
+    @Test
+    void 요구사항_동기화_적용은_지문을_넘기고_계획이_바뀌었으면_새_계획을_돌려준다() throws Exception {
+        stub("POST /core/workspaces/77/models/501/requirements/sync/apply", 200,
+                ok("{\"result\":{\"version\":10,\"changed\":true,\"summary\":[],\"warnings\":[],\"requirements\":{\"total\":3,\"pending\":1}},"
+                        + "\"added\":1,\"updated\":1,\"dropped\":1,\"removed\":0}"));
+
+        JsonNode result = text(call("apply_requirements_sync", "{\"documentId\":\"501\",\"items\":" + REQ_ITEMS + ",\"planFingerprint\":\"f1\"}"));
+
+        assertThat(result.path("applied").asBoolean()).isTrue();
+        assertThat(result.path("documentVersion").asLong()).isEqualTo(10);
+        assertThat(result.path("dropped").asInt()).isEqualTo(1);
+        assertThat(result.path("url").asString()).isEqualTo("https://crowfoot.example/workspaces/77/models/501");
+        Received apply = received.stream().filter(r -> r.path().endsWith("/requirements/sync/apply")).findFirst().orElseThrow();
+        assertThat(JSON.readTree(apply.body()).path("planFingerprint").asString()).isEqualTo("f1");
+
+        stub("POST /core/workspaces/77/models/501/requirements/sync/apply", 409,
+                "{\"header\":{\"isSuccessful\":false,\"resultCode\":\"REQUIREMENTS_SYNC_PLAN_CHANGED\",\"resultMessage\":\"바뀌었습니다\"}}");
+        stub("POST /core/workspaces/77/models/501/requirements/sync", 200, ok(REQ_SYNC_PLAN));
+        JsonNode stale = text(call("apply_requirements_sync", "{\"documentId\":\"501\",\"items\":" + REQ_ITEMS + ",\"planFingerprint\":\"old\"}"));
+        assertThat(stale.path("applied").asBoolean()).isFalse();
+        assertThat(stale.path("plan").path("planFingerprint").asString()).isEqualTo("f1");
+    }
+
+    /* ---------- 수용 기준 데이터 확인 ---------- */
+
+    @Test
+    void 수용_기준_확인은_확인_SQL이_있는_기준만_원천_커넥션의_DB_매니저로_보내고_요구사항별로_묶어_돌려준다() throws Exception {
+        stub("GET /core/workspaces/77/models/501/outline", 200, ok("{\"name\":\"쇼핑몰 ERD\",\"version\":9,\"sourceConnectionId\":\"901\","
+                + "\"requirements\":[{\"code\":\"REQ-001\",\"title\":\"주문 생성\",\"criteria\":["
+                + "{\"id\":\"k1\",\"text\":\"회원만 주문한다\",\"done\":false,\"check\":{\"sql\":\"SELECT COUNT(*) FROM orders WHERE member_id IS NULL\",\"expect\":\"0\"}},"
+                + "{\"id\":\"k2\",\"text\":\"확인 없음\",\"done\":false,\"check\":null}]},"
+                + "{\"code\":\"REQ-002\",\"title\":\"결제\"}]}"));
+        stub("POST /database-manager/workspaces/77/connections/901/checks", 200, ok("{\"results\":[{\"key\":\"REQ-001/k1\",\"status\":\"FAILED\","
+                + "\"value\":\"2\",\"expect\":\"0\",\"errorCode\":null,\"message\":null,\"elapsedMs\":3}],\"passed\":0,\"failed\":1,\"errors\":0,\"elapsedMs\":4}"));
+
+        JsonNode result = text(call("check_requirements", "{\"documentId\":\"501\"}"));
+
+        assertThat(result.path("checked").asInt()).isEqualTo(1);
+        assertThat(result.path("unchecked").asInt()).isEqualTo(1);
+        assertThat(result.path("failed").asInt()).isEqualTo(1);
+        JsonNode criterion = result.path("requirements").get(0).path("criteria").get(0);
+        assertThat(criterion.path("text").asString()).isEqualTo("회원만 주문한다");
+        assertThat(criterion.path("status").asString()).isEqualTo("FAILED");
+        assertThat(criterion.path("value").asString()).isEqualTo("2");
+        assertThat(result.path("next").asString()).contains("데이터를 고치지 않는다");
+        Received request = received.stream().filter(r -> r.path().endsWith("/checks")).findFirst().orElseThrow();
+        assertThat(JSON.readTree(request.body()).path("checks").size()).isEqualTo(1);
+        assertThat(calls()).noneMatch(call -> call.startsWith("POST /core"));
     }
 
     /* ---------- DB → 문서 동기화 ---------- */

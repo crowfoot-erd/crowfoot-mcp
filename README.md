@@ -20,11 +20,15 @@ The MCP server of the Crowfoot ERD editor: lets MCP clients such as Claude read 
 |---|---|
 | 읽기 | `get_workspace`, `list_documents`, `get_document`, `get_design_context`, `validate_document`, `export_ddl` |
 | 문서 만들기 | `create_document`, `import_ddl` |
-| 요구사항·ERD | `save_requirements`, `apply_schema`, `remove_objects` |
+| 요구사항·ERD | `save_requirements`, `plan_requirements_sync`, `apply_requirements_sync`, `check_requirements`, `apply_schema`, `remove_objects` |
 | 데이터베이스 | `list_databases`, `issue_database`, `list_connections`, `plan_deployment`, `deploy_document`, `plan_migration`, `apply_migration`, `plan_sample_data`, `insert_sample_data`, `plan_sync`, `apply_sync` |
 | 신고 | `report_bug` |
 
 배포(`deploy_document`)와 변경 반영(`apply_migration`)은 계획 도구가 돌려준 문서 버전과 계획 지문을 입력으로 받는다. 값이 지금과 다르면 실행하지 않는다.
+
+요구사항 동기화(`plan_requirements_sync`, `apply_requirements_sync`)는 기준이 되는 요구사항 전체 목록으로 문서의 요구사항을 맞춘다. 목록에 없는 요구사항은 기본으로 `dropped`로 바꾸고 `acceptRemovals=true`일 때만 지운다.
+
+수용 기준 확인(`check_requirements`)은 요구사항 수용 기준의 확인 SQL을 문서가 연결된 데이터베이스에서 읽기 전용으로 실행해 기대값과 견준다.
 
 동기화(`plan_sync`, `apply_sync`)는 반대 방향이다. 데이터베이스의 구조를 문서로 가져온다. 문서에만 있는 객체(`removals`)는 `includeRemovals=true`일 때만 지운다.
 

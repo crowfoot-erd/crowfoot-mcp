@@ -24,7 +24,18 @@ public final class Inputs {
             @JsonProperty @JsonPropertyDescription("상태: draft(검토 중), confirmed(확정), dropped(제외). 새로 만들 때 생략하면 draft") String status,
             @JsonProperty @JsonPropertyDescription("범위: tables(기능 요구사항 — 테이블에 연결한다, 기본) 또는 document(문서 전체에 적용되는 공통 요구사항). 고칠 때는 바꿀 수 없다") String scope,
             @JsonProperty @JsonPropertyDescription("도메인 = 그룹 이름. 없는 이름이면 빈 그룹을 만든다. 빈 문자열은 미분류로 돌린다") String domain,
-            @JsonProperty @JsonPropertyDescription("이 요구사항을 구현하는 테이블의 물리명 전체 목록. 주면 연결을 이 목록으로 바꾼다") List<String> tables) {
+            @JsonProperty @JsonPropertyDescription("이 요구사항을 구현하는 테이블의 물리명 전체 목록. 주면 연결을 이 목록으로 바꾼다") List<String> tables,
+            @JsonProperty @JsonPropertyDescription("수용 기준 전체 목록(20개까지). 주면 목록째 바꾼다 — 문구가 같은 기준은 체크 상태를 이어받는다. "
+                    + "기준마다 sql(데이터로 확인하는 SELECT — 한 값을 돌려준다)과 expect(기대값, 생략하면 0)를 둘 수 있다. 수용 기준만 바꾸면 반영 대기가 되지 않는다") List<CriterionInput> criteria) {
+    }
+
+    /** 수용 기준 한 줄 — check_requirements가 sql을 원천 데이터베이스에서 읽기 전용으로 실행해 expect와 견준다 */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record CriterionInput(
+            @JsonProperty(required = true) @JsonPropertyDescription("기준 문장(1~200자). 예: 주문은 회원만 만든다") String text,
+            @JsonProperty @JsonPropertyDescription("데이터로 확인하는 SELECT 한 문장. 첫 행 첫 열의 값을 expect와 견준다. "
+                    + "예: SELECT COUNT(*) FROM orders WHERE member_id IS NULL. 위반 건수를 세어 0을 기대하는 꼴이 좋다") String sql,
+            @JsonProperty @JsonPropertyDescription("기대값(문자열). 숫자는 수로 견준다. 생략하면 0") String expect) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

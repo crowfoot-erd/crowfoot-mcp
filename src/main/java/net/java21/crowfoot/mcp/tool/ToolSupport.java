@@ -38,6 +38,10 @@ public class ToolSupport {
         return json.createObjectNode();
     }
 
+    public tools.jackson.databind.node.ArrayNode array() {
+        return json.createArrayNode();
+    }
+
     public JsonNode tree(Object value) {
         return json.valueToTree(value);
     }
