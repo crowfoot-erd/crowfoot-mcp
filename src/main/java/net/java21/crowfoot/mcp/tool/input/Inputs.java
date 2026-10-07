@@ -49,7 +49,7 @@ public final class Inputs {
             @JsonProperty @JsonPropertyDescription("유니크 키. 같은 컬럼 조합이 없으면 만든다") List<UniqueInput> uniques,
             @JsonProperty @JsonPropertyDescription("인덱스. 같은 컬럼 조합이 없으면 만든다. 관계의 외래 키 인덱스는 자동으로 생기므로 넣지 않는다") List<IndexInput> indexes,
             @JsonProperty @JsonPropertyDescription("이 테이블의 근거가 되는 요구사항 코드. 그 요구사항에 이 테이블을 연결하고 반영한 것으로 표시한다") List<String> requirementCodes,
-            @JsonProperty @JsonPropertyDescription("CHECK 제약. 같은 이름이 있으면 식을 바꾸고 없으면 더한다") List<CheckInput> checks) {
+            @JsonProperty @JsonPropertyDescription("CHECK 제약. 같은 이름이 있으면 식을 바꾸고 없으면 더한다. 지우려면 remove_objects의 checks") List<CheckInput> checks) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -75,11 +75,12 @@ public final class Inputs {
             @JsonProperty @JsonPropertyDescription("정밀도 — DECIMAL·NUMERIC에만. TIME·DATETIME·TIMESTAMP에서는 소수 초 자릿수(0~6)") Integer precision,
             @JsonProperty @JsonPropertyDescription("스케일 — DECIMAL·NUMERIC에만") Integer scale,
             @JsonProperty @JsonPropertyDescription("NULL 허용 여부. 새 컬럼에서 생략하면 true") Boolean nullable,
-            @JsonProperty @JsonPropertyDescription("기본값. 문자열은 따옴표 없이 쓴다(ACTIVE — Crowfoot이 DDL에서 따옴표를 붙인다). 예: 0, ACTIVE, CURRENT_TIMESTAMP(6), (uuid())") String defaultValue,
+            @JsonProperty @JsonPropertyDescription("기본값. 문자열은 따옴표 없이 쓴다(ACTIVE — Crowfoot이 DDL에서 따옴표를 붙인다). 빈 문자열 기본값은 ''로 쓴다(빈 값은 기본값을 지운다). 예: 0, ACTIVE, '', CURRENT_TIMESTAMP(6), (uuid())") String defaultValue,
             @JsonProperty @JsonPropertyDescription("자동 증가 — 정수 타입의 단일 컬럼 기본 키에만") Boolean autoIncrement,
             @JsonProperty @JsonPropertyDescription("워크스페이스 도메인 타입의 이름(get_design_context로 확인). 타입·길이·NULL 허용·기본값을 그 값으로 채운다") String domainType,
             @JsonProperty @JsonPropertyDescription("생성 컬럼(계산 컬럼). 생성 컬럼에는 기본값·자동 증가·onUpdate를 두지 않는다") GeneratedInput generated,
-            @JsonProperty @JsonPropertyDescription("행을 고칠 때 자동으로 넣는 값(MySQL ON UPDATE). 예: CURRENT_TIMESTAMP(6). 빈 문자열이면 해제") String onUpdate) {
+            @JsonProperty @JsonPropertyDescription("행을 고칠 때 자동으로 넣는 값(MySQL ON UPDATE). 예: CURRENT_TIMESTAMP(6). 빈 문자열이면 해제") String onUpdate,
+            @JsonProperty @JsonPropertyDescription("IDENTITY 종류 — 자동 증가 컬럼에서 ALWAYS(GENERATED ALWAYS — 값을 직접 넣을 수 없다) 또는 BY_DEFAULT(기본). PostgreSQL·Oracle에서만 DDL이 달라진다") String identityGeneration) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -90,16 +91,21 @@ public final class Inputs {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record IndexInput(
-            @JsonProperty @JsonPropertyDescription("인덱스 이름. 생략하면 idx_테이블_컬럼… 으로 만든다") String name,
-            @JsonProperty(required = true) @JsonPropertyDescription("인덱스 컬럼(순서대로)") List<IndexColumnInput> columns,
-            @JsonProperty @JsonPropertyDescription("종류: BTREE(기본), FULLTEXT(전문 검색), SPATIAL(공간). FULLTEXT·SPATIAL은 MySQL만 DDL에 낸다") String type,
-            @JsonProperty @JsonPropertyDescription("FULLTEXT 인덱스의 MySQL 파서 이름. 예: ngram") String parser) {
+            @JsonProperty @JsonPropertyDescription("인덱스 이름. 생략하면 idx_테이블_컬럼… 으로 만든다. 이 테이블에 같은 이름의 인덱스가 있으면 그 인덱스를 고친다") String name,
+            @JsonProperty @JsonPropertyDescription("인덱스 컬럼(순서대로). 식이 든 키는 columns 대신 expression에 적는다") List<IndexColumnInput> columns,
+            @JsonProperty @JsonPropertyDescription("종류: BTREE(기본), FULLTEXT(전문 검색)·SPATIAL(공간) — MySQL, HASH — MySQL·PostgreSQL, GIN·GIST·BRIN·SPGIST — PostgreSQL. 지원하지 않는 DBMS의 DDL에서는 빠지고 경고가 난다") String type,
+            @JsonProperty @JsonPropertyDescription("FULLTEXT 인덱스의 MySQL 파서 이름. 예: ngram") String parser,
+            @JsonProperty @JsonPropertyDescription("유니크 인덱스. 컬럼만으로 된 유니크는 uniques에 적고, 조건(where)이나 식이 붙은 유니크만 여기에 true로 적는다") Boolean unique,
+            @JsonProperty @JsonPropertyDescription("식이 든 키 목록 원문 — columns 대신. 예: lower(nickname), tenant_id, lower(email) DESC. 빈 문자열이면 해제") String expression,
+            @JsonProperty @JsonPropertyDescription("부분 인덱스 조건(WHERE 없이). 예: deleted_at IS NULL. PostgreSQL·SQL Server만 DDL에 낸다. 빈 문자열이면 해제") String where,
+            @JsonProperty @JsonPropertyDescription("INCLUDE 컬럼 물리명(키가 아닌 덮개 컬럼). PostgreSQL·SQL Server만 DDL에 낸다. 빈 배열이면 해제") List<String> include) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record IndexColumnInput(
             @JsonProperty(required = true) @JsonPropertyDescription("컬럼 물리명") String name,
-            @JsonProperty @JsonPropertyDescription("정렬: ASC(기본) 또는 DESC") String order) {
+            @JsonProperty @JsonPropertyDescription("정렬: ASC(기본) 또는 DESC") String order,
+            @JsonProperty @JsonPropertyDescription("PostgreSQL 연산자 클래스. 예: gin_trgm_ops, varchar_pattern_ops") String opclass) {
     }
 
     /**
@@ -117,7 +123,8 @@ public final class Inputs {
             @JsonProperty @JsonPropertyDescription("부모 쪽 기수: EXACTLY_ONE(외래 키 NOT NULL, 기본) 또는 ZERO_OR_ONE(외래 키 NULL 허용)") String parentMultiplicity,
             @JsonProperty @JsonPropertyDescription("NO_ACTION(기본), RESTRICT, CASCADE, SET_NULL, SET_DEFAULT") String onDelete,
             @JsonProperty @JsonPropertyDescription("NO_ACTION(기본), RESTRICT, CASCADE, SET_NULL, SET_DEFAULT") String onUpdate,
-            @JsonProperty @JsonPropertyDescription("자식의 기존 컬럼을 외래 키로 쓸 때만. 생략하면 외래 키 컬럼을 새로 만든다") List<ColumnMappingInput> columnMappings) {
+            @JsonProperty @JsonPropertyDescription("자식의 기존 컬럼을 외래 키로 쓸 때만. 생략하면 외래 키 컬럼을 새로 만든다. 부모와 자식이 같은 관계가 여럿이고 name이 없으면 외래 키 컬럼이 같은 관계를 고친다") List<ColumnMappingInput> columnMappings,
+            @JsonProperty @JsonPropertyDescription("외래 키 이름(get_document의 관계 name). 부모와 자식이 같은 관계가 여럿일 때 고칠 관계를 고른다. 문서에 없는 이름이면 그 이름으로 관계를 하나 더 만든다(예: member → follow의 fk_follow_follower와 fk_follow_followee)") String name) {
     }
 
     public record ColumnMappingInput(
@@ -139,9 +146,16 @@ public final class Inputs {
             @JsonProperty(required = true) @JsonPropertyDescription("컬럼 물리명") String column) {
     }
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record RelationshipRef(
             @JsonProperty(required = true) @JsonPropertyDescription("부모 테이블 물리명") String parent,
-            @JsonProperty(required = true) @JsonPropertyDescription("자식 테이블 물리명") String child) {
+            @JsonProperty(required = true) @JsonPropertyDescription("자식 테이블 물리명") String child,
+            @JsonProperty @JsonPropertyDescription("외래 키 이름(get_document의 관계 name). 부모와 자식이 같은 관계가 여럿이면 있어야 한다") String name) {
+    }
+
+    public record CheckRef(
+            @JsonProperty(required = true) @JsonPropertyDescription("테이블 물리명") String table,
+            @JsonProperty(required = true) @JsonPropertyDescription("CHECK 제약 이름(get_document의 checks name)") String name) {
     }
 
     /** 샘플 데이터 — 테이블 하나와 넣을 행들 */
