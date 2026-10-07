@@ -8,6 +8,7 @@ import net.java21.crowfoot.mcp.auth.Caller;
 import net.java21.crowfoot.mcp.tool.input.Inputs.AreaInput;
 import net.java21.crowfoot.mcp.tool.input.Inputs.CheckRef;
 import net.java21.crowfoot.mcp.tool.input.Inputs.ColumnRef;
+import net.java21.crowfoot.mcp.tool.input.Inputs.IndexRef;
 import net.java21.crowfoot.mcp.tool.input.Inputs.RelationshipInput;
 import net.java21.crowfoot.mcp.tool.input.Inputs.RelationshipRef;
 import net.java21.crowfoot.mcp.tool.input.Inputs.RequirementItem;
@@ -67,7 +68,7 @@ public class EditTools {
     }
 
     @McpTool(name = "remove_objects", title = "삭제",
-            description = "테이블, 컬럼, 관계, CHECK 제약, 요구사항을 문서에서 지운다. 사용자가 명시적으로 지우라고 했을 때만 부른다. "
+            description = "테이블, 컬럼, 관계, CHECK 제약, 인덱스, 요구사항을 문서에서 지운다. 사용자가 명시적으로 지우라고 했을 때만 부른다. "
                     + "테이블을 지우면 붙은 관계와 상대 테이블의 외래 키 컬럼이 함께 지워진다. 관계를 지우면 그 관계가 만든 외래 키 컬럼이 지워진다. "
                     + "컬럼을 지우면 그 컬럼을 쓰는 CHECK 제약도 지워진다 — 지운 CHECK는 warnings(CHECK_REMOVED_WITH_COLUMN)로 알려 주니 사용자에게 그대로 보여 준다. "
                     + "빠진 요구사항은 지우지 말고 save_requirements로 status를 dropped로 바꾼다 — 요구사항 삭제는 잘못 등록한 항목에만 쓴다. 문서 자체는 지울 수 없다.",
@@ -78,6 +79,7 @@ public class EditTools {
             @McpToolParam(required = false, description = "지울 컬럼") List<ColumnRef> columns,
             @McpToolParam(required = false, description = "지울 관계") List<RelationshipRef> relationships,
             @McpToolParam(required = false, description = "지울 CHECK 제약") List<CheckRef> checks,
+            @McpToolParam(required = false, description = "지울 인덱스. 인덱스의 컬럼만 바꿀 때는 지우지 말고 apply_schema에 같은 이름으로 보낸다") List<IndexRef> indexes,
             @McpToolParam(required = false, description = "지울 요구사항의 코드") List<String> requirements) {
         Caller caller = support.caller(context);
         Map<String, Object> body = new LinkedHashMap<>();
@@ -85,9 +87,10 @@ public class EditTools {
         putIfPresent(body, "columns", columns);
         putIfPresent(body, "relationships", relationships);
         putIfPresent(body, "checks", checks);
+        putIfPresent(body, "indexes", indexes);
         putIfPresent(body, "requirements", requirements);
         body.put("note", support.note("삭제 — 테이블 " + size(tables) + ", 컬럼 " + size(columns) + ", 관계 " + size(relationships)
-                + ", CHECK " + size(checks) + ", 요구사항 " + size(requirements)));
+                + ", CHECK " + size(checks) + ", 인덱스 " + size(indexes) + ", 요구사항 " + size(requirements)));
         return result(caller, documentId, support.core().post(caller, support.modelPath(caller, documentId, "/schema/remove"), body));
     }
 

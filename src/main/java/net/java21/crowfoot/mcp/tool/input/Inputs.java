@@ -158,6 +158,11 @@ public final class Inputs {
             @JsonProperty(required = true) @JsonPropertyDescription("CHECK 제약 이름(get_document의 checks name)") String name) {
     }
 
+    public record IndexRef(
+            @JsonProperty(required = true) @JsonPropertyDescription("테이블 물리명") String table,
+            @JsonProperty(required = true) @JsonPropertyDescription("인덱스 이름(get_document의 indexes name)") String name) {
+    }
+
     /** 샘플 데이터 — 테이블 하나와 넣을 행들 */
     public record SampleTable(
             @JsonPropertyDescription("테이블 물리명") String name,

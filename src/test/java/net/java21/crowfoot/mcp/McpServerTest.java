@@ -210,6 +210,19 @@ class McpServerTest {
     }
 
     @Test
+    void 삭제_도구는_인덱스를_테이블과_이름으로_넘긴다() throws Exception {
+        stub("POST /core/workspaces/77/models/501/schema/remove", 200,
+                ok("{\"version\":9,\"changed\":true,\"summary\":[],\"warnings\":[],\"requirements\":{\"counts\":{},\"pending\":[]}}"));
+
+        call("remove_objects", "{\"documentId\":\"501\",\"indexes\":[{\"table\":\"posts\",\"name\":\"idx_posts_topic\"}]}");
+
+        JsonNode body = JSON.readTree(received.get(0).body());
+        assertThat(body.propertyNames()).containsExactlyInAnyOrder("indexes", "note");
+        assertThat(body.path("indexes").get(0).path("name").asString()).isEqualTo("idx_posts_topic");
+        assertThat(body.path("note").asString()).contains("인덱스 1");
+    }
+
+    @Test
     void 문서_ID가_숫자가_아니면_core를_부르지_않는다() throws Exception {
         JsonNode result = call("get_document", "{\"documentId\":\"501/../../9\"}");
 
