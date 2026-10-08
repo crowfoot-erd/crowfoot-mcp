@@ -136,7 +136,7 @@ public final class Inputs {
     public record AreaInput(
             @JsonProperty(required = true) @JsonPropertyDescription("그룹(도메인) 이름. 같은 이름의 그룹이 있으면 고치고 없으면 만든다") String name,
             @JsonProperty @JsonPropertyDescription("이름을 바꿀 때 새 이름") String rename,
-            @JsonProperty @JsonPropertyDescription("색: default, red, orange, amber, yellow, green, teal, sky, blue, violet, pink") String color,
+            @JsonProperty @JsonPropertyDescription("색: default, red, orange, amber, yellow, green, teal, sky, blue, violet, pink. 새 그룹에서 생략하면 문서에서 아직 쓰지 않은 색을 Crowfoot이 고른다 — 그룹마다 다른 색이 된다") String color,
             @JsonProperty @JsonPropertyDescription("그룹 설명") String description,
             @JsonProperty @JsonPropertyDescription("멤버 테이블의 물리명 전체 목록. 주면 멤버를 이 목록으로 바꾼다") List<String> tables) {
     }
