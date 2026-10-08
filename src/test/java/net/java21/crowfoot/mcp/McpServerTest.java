@@ -255,6 +255,39 @@ class McpServerTest {
         assertThat(JSON.readTree(received.get(1).body()).path("connectionId").asString()).isEqualTo("901");
     }
 
+    @Test
+    void 배포_계획은_근거_요구사항과_그룹이_없는_테이블을_경고로_알린다() throws Exception {
+        stub("GET /core/workspaces/77/models/501/outline", 200, ok("{\"name\":\"쇼핑몰 ERD\",\"version\":9,\"databaseType\":\"postgresql\",\"sourceConnectionId\":null,"
+                + "\"tables\":[{\"physicalName\":\"orders\"},{\"physicalName\":\"users\"},{\"physicalName\":\"coupons\"}],"
+                + "\"requirements\":[{\"code\":\"REQ-001\",\"scope\":\"tables\",\"status\":\"confirmed\",\"tables\":[\"orders\"]},"
+                + "{\"code\":\"REQ-002\",\"scope\":\"tables\",\"status\":\"dropped\",\"tables\":[\"coupons\"]},"
+                + "{\"code\":\"REQ-003\",\"scope\":\"document\",\"status\":\"confirmed\",\"tables\":[]}],"
+                + "\"areas\":[{\"name\":\"주문\",\"tables\":[\"orders\",\"coupons\"]}]}"));
+        stub("GET /core/workspaces/77/connections", 200,
+                list("[{\"connectionId\":\"901\",\"name\":\"개발 PG\",\"dbmsType\":\"postgresql\",\"managed\":true,\"mcpApplyAllowed\":true}]"));
+        stub("GET /core/workspaces/77/models/501/ddl", 200,
+                ok("{\"sql\":\"CREATE TABLE orders ();\",\"tableCount\":3,\"relationshipCount\":0,\"warnings\":[{\"code\":\"VALIDATION\",\"message\":\"x\"}]}"));
+
+        JsonNode plan = text(call("plan_deployment", "{\"documentId\":\"501\",\"connectionId\":\"901\"}"));
+
+        assertThat(plan.path("warnings").findValuesAsString("code")).containsExactly("VALIDATION", "UNTRACED_TABLES", "UNGROUPED_TABLES");
+        assertThat(plan.path("warnings").get(1).path("tables").toString()).isEqualTo("[\"users\",\"coupons\"]");
+        assertThat(plan.path("warnings").get(2).path("tables").toString()).isEqualTo("[\"users\"]");
+        assertThat(plan.path("executable").asBoolean()).isTrue();
+        assertThat(plan.path("next").asString()).startsWith("UNTRACED_TABLES");
+    }
+
+    @Test
+    void SQL로_만든_문서는_요구사항과_그룹을_채우라고_안내한다() throws Exception {
+        stub("POST /core/workspaces/77/models/sql-import", 200,
+                ok("{\"model\":{\"modelId\":\"601\",\"name\":\"블로그\",\"databaseType\":\"mysql\",\"version\":0},\"tableCount\":1,\"relationshipCount\":0,\"skipped\":[],\"warnings\":[]}"));
+
+        JsonNode result = text(call("import_ddl", "{\"databaseType\":\"mysql\",\"ddl\":\"CREATE TABLE posts (id BIGINT PRIMARY KEY);\",\"name\":\"블로그\"}"));
+
+        assertThat(result.path("documentId").asString()).isEqualTo("601");
+        assertThat(result.path("next").asString()).contains("save_requirements").contains("plan_deployment");
+    }
+
     private void stubMigration(String sql, String warnings, boolean allowed) {
         stub("GET /core/workspaces/77/models/501/outline", 200, ok("{\"name\":\"쇼핑몰 ERD\",\"version\":9,\"databaseType\":\"postgresql\",\"sourceConnectionId\":\"901\"}"));
         stub("GET /core/workspaces/77/connections", 200,

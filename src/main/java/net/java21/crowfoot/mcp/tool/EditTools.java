@@ -57,7 +57,7 @@ public class EditTools {
             @McpToolParam(description = "문서 ID") String documentId,
             @McpToolParam(required = false, description = "테이블(100개 이하)") List<TableInput> tables,
             @McpToolParam(required = false, description = "관계. 부모와 자식이 같은 관계가 있으면 고치고 없으면 만든다. 부모와 자식이 같은 관계가 여럿이면 name(외래 키 이름 — get_document의 관계 name)으로 고른다") List<RelationshipInput> relationships,
-            @McpToolParam(required = false, description = "그룹(도메인). 이름이 같은 그룹이 있으면 고치고 없으면 만든다") List<AreaInput> areas) {
+            @McpToolParam(required = false, description = "그룹(도메인). 이름이 같은 그룹이 있으면 고치고 없으면 만든다. 그룹이 없는 테이블은 requirementCodes로 연결한 요구사항의 도메인 그룹에 저절로 들어간다 — 다른 그룹에 넣을 때만 여기에 적는다") List<AreaInput> areas) {
         Caller caller = support.caller(context);
         Map<String, Object> body = new LinkedHashMap<>();
         putIfPresent(body, "tables", tables);

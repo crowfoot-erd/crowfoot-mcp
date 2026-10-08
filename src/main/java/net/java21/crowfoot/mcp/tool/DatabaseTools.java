@@ -4,10 +4,13 @@ import io.modelcontextprotocol.common.McpTransportContext;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import net.java21.crowfoot.mcp.auth.Caller;
 import net.java21.crowfoot.mcp.core.CoreException;
 import net.java21.crowfoot.mcp.tool.input.Inputs.SampleTable;
@@ -104,9 +107,52 @@ public class DatabaseTools {
         out.set("sql", ddl.path("sql"));
         out.set("tableCount", ddl.path("tableCount"));
         out.set("relationshipCount", ddl.path("relationshipCount"));
-        out.set("warnings", ddl.path("warnings"));
-        out.put("next", "대상과 SQL을 사용자에게 보여 주고 승인을 받는다. 승인하면 deploy_document에 documentVersion을 그대로 넣어 부른다. 실행은 되돌릴 수 없다.");
+        ArrayNode warnings = ddl.path("warnings").isArray() ? ((ArrayNode) ddl.path("warnings")).deepCopy() : support.object().arrayNode();
+        boolean gaps = addDesignGaps(outline, warnings);
+        out.set("warnings", warnings);
+        out.put("next", (gaps ? "UNTRACED_TABLES·UNGROUPED_TABLES 경고를 사용자에게 보여 주고, 배포 전에 요구사항과 그룹을 채울지 묻는다. " : "")
+                + "대상과 SQL을 사용자에게 보여 주고 승인을 받는다. 승인하면 deploy_document에 documentVersion을 그대로 넣어 부른다. 실행은 되돌릴 수 없다.");
         return support.text(out);
+    }
+
+    /**
+     * 근거 요구사항이 없는 테이블(UNTRACED_TABLES)과 그룹에 없는 테이블(UNGROUPED_TABLES)을 경고로 더한다(v1.39).
+     * 배포를 막지 않는다. 더했으면 true
+     */
+    private boolean addDesignGaps(JsonNode outline, ArrayNode warnings) {
+        Set<String> traced = new HashSet<>();
+        for (JsonNode requirement : outline.path("requirements")) {
+            if (!"document".equals(requirement.path("scope").asString("")) && !"dropped".equals(requirement.path("status").asString(""))) {
+                requirement.path("tables").forEach(table -> traced.add(table.asString()));
+            }
+        }
+        Set<String> grouped = new HashSet<>();
+        outline.path("areas").forEach(area -> area.path("tables").forEach(table -> grouped.add(table.asString())));
+        List<String> untraced = new ArrayList<>();
+        List<String> ungrouped = new ArrayList<>();
+        for (JsonNode table : outline.path("tables")) {
+            String name = table.path("physicalName").asString();
+            if (!traced.contains(name)) {
+                untraced.add(name);
+            }
+            if (!grouped.contains(name)) {
+                ungrouped.add(name);
+            }
+        }
+        addGap(warnings, "UNTRACED_TABLES", "근거 요구사항이 없는 테이블 " + untraced.size() + "개", untraced);
+        addGap(warnings, "UNGROUPED_TABLES", "그룹에 없는 테이블 " + ungrouped.size() + "개", ungrouped);
+        return !untraced.isEmpty() || !ungrouped.isEmpty();
+    }
+
+    private void addGap(ArrayNode warnings, String code, String message, List<String> tables) {
+        if (tables.isEmpty()) {
+            return;
+        }
+        ObjectNode warning = warnings.addObject();
+        warning.put("code", code);
+        warning.put("message", message);
+        ArrayNode names = warning.putArray("tables");
+        tables.forEach(names::add);
     }
 
     @McpTool(name = "deploy_document", title = "배포",

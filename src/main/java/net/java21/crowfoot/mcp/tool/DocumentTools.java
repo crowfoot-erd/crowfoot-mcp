@@ -130,8 +130,13 @@ public class DocumentTools {
         out.set("relationshipCount", response.path("relationshipCount"));
         out.set("skipped", response.path("skipped"));
         out.set("warnings", response.path("warnings"));
+        out.put("next", IMPORT_NEXT);
         return support.text(out);
     }
+
+    /** SQL로 만든 문서에는 요구사항과 그룹이 없다 — 배포 전에 채우게 안내한다(v1.39) */
+    private static final String IMPORT_NEXT = "요구사항과 그룹이 아직 없다. 테이블의 근거가 될 요구사항 초안(도메인 포함)을 사용자에게 보여 주고 확인받아 save_requirements로 등록한 뒤, "
+            + "apply_schema의 requirementCodes로 테이블을 연결한다 — 그룹이 없는 테이블은 요구사항 도메인 그룹에 들어간다. 배포(plan_deployment) 전에 한다.";
 
     private ObjectNode created(Caller caller, JsonNode model) {
         ObjectNode out = support.object();
