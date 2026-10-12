@@ -52,6 +52,11 @@ public class CoreClient {
         return exchange(caller, HttpMethod.POST, path, Map.of(), body);
     }
 
+    /** PUT — body는 JSON으로 보낸다. 사이트 등록(08-core/19-site-showcase.md Section 3.2)이 쓴다 */
+    public JsonNode put(Caller caller, String path, Object body) {
+        return exchange(caller, HttpMethod.PUT, path, Map.of(), body);
+    }
+
     /**
      * DB 매니저 POST — 같은 헤더를 붙여 DB 매니저의 구현 경로(/database-manager/…)를 부른다.
      * 토큰으로 온 요청이 부를 수 있는 것은 샘플 데이터 넣기뿐이다(09-database-manager/00-data-browser.md Section 3.8).

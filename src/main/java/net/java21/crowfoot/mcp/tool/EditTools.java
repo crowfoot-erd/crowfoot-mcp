@@ -94,6 +94,39 @@ public class EditTools {
         return result(caller, documentId, support.core().post(caller, support.modelPath(caller, documentId, "/schema/remove"), body));
     }
 
+    @McpTool(name = "register_site", title = "만든 사이트 등록",
+            description = "이 ERD 문서로 만든 사이트의 주소를 등록하거나 고친다(문서당 한 곳). 사용자가 사이트 주소를 알려 주면 부른다. "
+                    + "Crowfoot이 사이트 화면을 찍어 썸네일, 제목, 설명을 채우고 시작 페이지와 사이트 쇼케이스(/showcase)에 바로 보여 준다 — 승인 절차가 없다. "
+                    + "찍는 데 최대 30초쯤 걸린다. 결과의 captureError가 있으면 찍지 못한 사유이니 사용자에게 알린다(등록은 됐다). "
+                    + "내부망·로컬 주소는 등록할 수 없다. 같은 주소로 다시 부르면 제목·설명만 고친다.",
+            annotations = @McpTool.McpAnnotations(readOnlyHint = false, destructiveHint = false, idempotentHint = true, openWorldHint = true))
+    public String registerSite(McpTransportContext context,
+            @McpToolParam(description = "문서 ID") String documentId,
+            @McpToolParam(description = "사이트 주소(http 또는 https, 2,000자 이하)") String url,
+            @McpToolParam(required = false, description = "카드 제목(200자 이하). 생략하면 사이트의 제목을 쓴다") String title,
+            @McpToolParam(required = false, description = "한 줄 소개(500자 이하). 생략하면 사이트의 설명을 쓴다") String description) {
+        Caller caller = support.caller(context);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("url", url);
+        if (title != null && !title.isBlank()) {
+            body.put("title", title);
+        }
+        if (description != null) {
+            body.put("description", description);
+        }
+        JsonNode site = support.core().put(caller, support.modelPath(caller, documentId, "/site"), body).path("response");
+        ObjectNode out = support.object();
+        out.put("registered", true);
+        out.set("siteUrl", site.path("url"));
+        out.set("title", site.path("title"));
+        out.set("description", site.path("description"));
+        out.put("thumbnail", site.path("thumbnailUrl").isString());
+        out.set("captureError", site.path("captureError"));
+        out.put("url", support.documentUrl(caller, documentId));
+        out.put("showcaseUrl", support.webUrl("/showcase"));
+        return support.text(out);
+    }
+
     /** 편집 API의 응답에 문서 주소와 다음에 할 일을 더한다 */
     private String result(Caller caller, String documentId, JsonNode body) {
         ObjectNode out = (ObjectNode) body.path("response").deepCopy();

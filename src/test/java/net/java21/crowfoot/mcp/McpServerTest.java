@@ -141,7 +141,7 @@ class McpServerTest {
     }
 
     @Test
-    void 도구는_26개이고_지우거나_실행하는_도구만_파괴적으로_표시한다() throws Exception {
+    void 도구는_27개이고_지우거나_실행하는_도구만_파괴적으로_표시한다() throws Exception {
         JsonNode tools = JSON.readTree(rpc("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", true).body()).path("result").path("tools");
 
         List<String> names = new ArrayList<>();
@@ -158,7 +158,7 @@ class McpServerTest {
                 "validate_document", "export_ddl", "create_document", "import_ddl", "save_requirements", "apply_schema", "remove_objects",
                 "list_databases", "issue_database", "list_connections", "plan_deployment", "deploy_document", "plan_migration", "apply_migration",
                 "plan_sample_data", "insert_sample_data", "report_bug", "plan_sync", "apply_sync",
-                "plan_requirements_sync", "apply_requirements_sync", "check_requirements");
+                "plan_requirements_sync", "apply_requirements_sync", "check_requirements", "register_site");
         // apply_sync는 includeRemovals=true일 때 문서에서 지운다 — 지울 수 있는 도구라 파괴적으로 표시한다
         // apply_requirements_sync는 acceptRemovals=true일 때 요구사항을 지운다
         assertThat(destructive).containsExactlyInAnyOrder("remove_objects", "deploy_document", "apply_migration", "apply_sync",
@@ -207,6 +207,22 @@ class McpServerTest {
         assertThat(body.has("baseVersion")).isFalse();
         assertThat(text(result).path("url").asString()).isEqualTo("https://crowfoot.example/workspaces/77/models/501");
         assertThat(text(result).path("next").asString()).contains("반영 대기");
+    }
+
+    @Test
+    void 사이트_등록은_PUT으로_넘기고_찍지_못한_사유와_쇼케이스_주소를_돌려준다() throws Exception {
+        stub("PUT /core/workspaces/77/models/501/site", 200, ok("{\"siteId\":\"12\",\"url\":\"https://blog.example.com\",\"title\":\"예제 블로그\","
+                + "\"description\":null,\"thumbnailUrl\":null,\"captureError\":\"서버에 연결할 수 없습니다\"}"));
+
+        JsonNode result = text(call("register_site", "{\"documentId\":\"501\",\"url\":\"https://blog.example.com\",\"title\":\" \"}"));
+
+        JsonNode body = JSON.readTree(received.get(0).body());
+        assertThat(body.propertyNames()).containsExactly("url"); // 빈 제목은 보내지 않는다 — 사이트 제목을 쓴다
+        assertThat(result.path("siteUrl").asString()).isEqualTo("https://blog.example.com");
+        assertThat(result.path("thumbnail").asBoolean()).isFalse();
+        assertThat(result.path("captureError").asString()).isEqualTo("서버에 연결할 수 없습니다");
+        assertThat(result.path("url").asString()).isEqualTo("https://crowfoot.example/workspaces/77/models/501");
+        assertThat(result.path("showcaseUrl").asString()).isEqualTo("https://crowfoot.example/showcase");
     }
 
     @Test
