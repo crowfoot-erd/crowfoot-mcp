@@ -98,7 +98,7 @@ public class CoreClient {
                 return node;
             });
         } catch (ResourceAccessException e) {
-            throw new CoreException(503, "CORE_UNREACHABLE", "Crowfoot 서버에 닿지 못했습니다. 잠시 뒤 다시 시도하세요.");
+            throw new CoreException(503, "CORE_UNREACHABLE", "Crowfoot 서버에 닿지 못했습니다. 잠시 뒤 다시 시도하세요.", e);
         }
     }
 
@@ -106,7 +106,7 @@ public class CoreClient {
         try {
             return json.readTree(bytes);
         } catch (RuntimeException e) {
-            throw new CoreException(status, "UNREADABLE_RESPONSE", "Crowfoot 서버의 응답을 읽지 못했습니다(HTTP " + status + ").");
+            throw new CoreException(status, "UNREADABLE_RESPONSE", "Crowfoot 서버의 응답을 읽지 못했습니다(HTTP " + status + ").", e);
         }
     }
 

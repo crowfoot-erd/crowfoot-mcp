@@ -15,6 +15,13 @@ public class CoreException extends RuntimeException {
         this.resultCode = resultCode;
     }
 
+    /** 원인 예외를 남긴다 — MCP 클라이언트에 보이는 메시지는 같다 */
+    public CoreException(int status, String resultCode, String message, Throwable cause) {
+        super(message, cause);
+        this.status = status;
+        this.resultCode = resultCode;
+    }
+
     public int status() {
         return status;
     }
